@@ -1,0 +1,222 @@
+// --- PWA Service Worker Registration ---
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker
+      .register("service-worker.js")
+      .then((registration) =>
+        console.log("ServiceWorker registration successful")
+      )
+      .catch((err) => console.log("ServiceWorker registration failed: ", err));
+  });
+}
+
+// --- DOM Elements ---
+const setupScreen = document.getElementById("setup-screen");
+const gameScreen = document.getElementById("game-screen");
+const playerCountSelect = document.getElementById("player-count");
+const lifePointsInput = document.getElementById("life-points");
+const startGameButton = document.getElementById("start-game");
+const resetButton = document.getElementById("reset-button");
+
+// --- Player Colors ---
+const playerColors = [
+  "bg-red-500",
+  "bg-blue-500",
+  "bg-green-500",
+  "bg-yellow-500",
+  "bg-purple-500",
+  "bg-pink-500",
+  "bg-cyan-500",
+  "bg-orange-500",
+  "bg-lime-500",
+];
+
+// --- Game State ---
+let longPressTimer;
+let longPressOccurred = false;
+const LONG_PRESS_DURATION = 500; // ms
+let playerStates = [];
+
+// --- Game Logic ---
+function createPlayerSection(playerIndex, initialLife, playerCount) {
+  const playerDiv = document.createElement("div");
+  const colorClass = playerColors[playerIndex % playerColors.length];
+  playerDiv.className = `player-container ${colorClass}`;
+  playerDiv.dataset.player = playerIndex;
+
+  // --- Rotation Logic ---
+  let rotation = 0;
+  if (playerCount <= 2) {
+    if (playerIndex === 0) rotation = 180;
+  } else if (playerCount <= 6 && playerCount > 2) {
+    if (playerIndex < 2) rotation = 180;
+  } else if (playerCount > 6) {
+    if (playerIndex < 3) rotation = 180;
+  }
+  playerDiv.style.transform = `rotate(${rotation}deg)`;
+
+  let currentLife = initialLife;
+
+  const lifeDisplay = document.createElement("div");
+  lifeDisplay.className = "life-total";
+  lifeDisplay.textContent = currentLife;
+
+  const snackbar = document.createElement("div");
+  snackbar.className = "change-snackbar";
+
+  const minusArea = document.createElement("div");
+  minusArea.className = "control-area minus-area";
+
+  const plusArea = document.createElement("div");
+  plusArea.className = "control-area plus-area";
+
+  // --- Event Listeners for Life Changes ---
+  const changeLife = (amount) => {
+    currentLife += amount;
+    lifeDisplay.textContent = currentLife;
+    updateSnackbar(playerIndex, amount);
+  };
+
+  const handlePress = (amount) => {
+    longPressOccurred = false;
+    longPressTimer = setTimeout(() => {
+      changeLife(amount * 5);
+      longPressOccurred = true;
+    }, LONG_PRESS_DURATION);
+  };
+
+  const handleRelease = (amount) => {
+    clearTimeout(longPressTimer);
+    if (!longPressOccurred) {
+      changeLife(amount);
+    }
+  };
+
+  minusArea.addEventListener("mousedown", () => handlePress(-1));
+  minusArea.addEventListener("mouseup", () => handleRelease(-1));
+  minusArea.addEventListener("mouseleave", () => clearTimeout(longPressTimer));
+  minusArea.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    handlePress(-1);
+  });
+  minusArea.addEventListener("touchend", () => handleRelease(-1));
+
+  plusArea.addEventListener("mousedown", () => handlePress(1));
+  plusArea.addEventListener("mouseup", () => handleRelease(1));
+  plusArea.addEventListener("mouseleave", () => clearTimeout(longPressTimer));
+  plusArea.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    handlePress(1);
+  });
+  plusArea.addEventListener("touchend", () => handleRelease(1));
+
+  playerDiv.appendChild(lifeDisplay);
+  playerDiv.appendChild(snackbar);
+  playerDiv.appendChild(minusArea);
+  playerDiv.appendChild(plusArea);
+
+  return playerDiv;
+}
+
+function updateSnackbar(playerIndex, amount) {
+  const state = playerStates[playerIndex];
+  const now = Date.now();
+
+  clearTimeout(state.snackbarTimer);
+
+  if (now - state.lastChangeTime < 3000) {
+    state.totalChange += amount;
+  } else {
+    state.totalChange = amount;
+  }
+  state.lastChangeTime = now;
+
+  const snackbar =
+    gameScreen.children[playerIndex].querySelector(".change-snackbar");
+  if (state.totalChange !== 0) {
+    snackbar.textContent =
+      (state.totalChange > 0 ? "+" : "") + state.totalChange;
+    snackbar.classList.add("show");
+  }
+
+  state.snackbarTimer = setTimeout(() => {
+    snackbar.classList.remove("show");
+  }, 2500);
+}
+
+function setupGameLayout(playerCount) {
+  gameScreen.innerHTML = ""; // Clear previous game
+  if (playerCount <= 2) {
+    gameScreen.style.gridTemplateColumns = "1fr";
+    gameScreen.style.gridTemplateRows = `repeat(${playerCount}, 1fr)`;
+  } else if (playerCount <= 4) {
+    gameScreen.style.gridTemplateColumns = "1fr 1fr";
+    gameScreen.style.gridTemplateRows = "1fr 1fr";
+  } else if (playerCount <= 6) {
+    gameScreen.style.gridTemplateColumns = "1fr 1fr";
+    gameScreen.style.gridTemplateRows = "1fr 1fr 1fr";
+  } else {
+    // 7, 8, 9 players
+    gameScreen.style.gridTemplateColumns = "1fr 1fr 1fr";
+    gameScreen.style.gridTemplateRows = "1fr 1fr 1fr";
+  }
+}
+
+// --- Event Handlers ---
+startGameButton.addEventListener("click", () => {
+  const playerCount = parseInt(playerCountSelect.value, 10);
+  const initialLife = parseInt(lifePointsInput.value, 10);
+
+  // Reset and initialize states for each player
+  playerStates = [];
+  for (let i = 0; i < playerCount; i++) {
+    playerStates.push({
+      lastChangeTime: 0,
+      totalChange: 0,
+      snackbarTimer: null,
+    });
+  }
+
+  setupGameLayout(playerCount);
+
+  for (let i = 0; i < playerCount; i++) {
+    const playerSection = createPlayerSection(i, initialLife, playerCount);
+    gameScreen.appendChild(playerSection);
+  }
+
+  setupScreen.classList.add("hidden");
+  gameScreen.classList.remove("hidden");
+  gameScreen.classList.add("grid");
+  resetButton.classList.remove("hidden");
+});
+
+resetButton.addEventListener("click", () => {
+  gameScreen.classList.add("hidden");
+  gameScreen.classList.remove("grid");
+  resetButton.classList.add("hidden");
+  setupScreen.classList.remove("hidden");
+});
+
+// Virtual icons
+function createIcon(size) {
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#4f46e5";
+  ctx.fillRect(0, 0, size, size);
+  ctx.fillStyle = "white";
+  ctx.font = `${size * 0.6}px Inter, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("♥", size / 2, size / 2 + size * 0.05); // Adjust icon position
+  return canvas.toDataURL();
+}
+document.querySelector('link[rel="apple-touch-icon"]').href = createIcon(192);
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker
+    .register("sw.js")
+    .then(() => console.log("SW registered"))
+    .catch((err) => console.error("SW failed", err));
+}
