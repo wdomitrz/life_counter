@@ -1,86 +1,85 @@
+/* Custom styles for better UX */
+body,
+html {
+  height: 100%;
+  overflow: hidden;
+  font-family: "Inter", sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  /* Remove tap highlight on mobile */
+}
 
-      /* Custom styles for better UX */
-      body,
-      html {
-        height: 100%;
-        overflow: hidden;
-        font-family: "Inter", sans-serif;
-        -webkit-tap-highlight-color: transparent;
-        /* Remove tap highlight on mobile */
-      }
+.player-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  width: 100%;
+  position: relative;
+  user-select: none;
+  /* Prevent text selection */
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  transition: transform 0.3s ease-in-out;
+}
 
-      .player-container {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100%;
-        width: 100%;
-        position: relative;
-        user-select: none;
-        /* Prevent text selection */
-        -webkit-user-select: none;
-        -moz-user-select: none;
-        -ms-user-select: none;
-        transition: transform 0.3s ease-in-out;
-      }
+.life-total {
+  font-size: 8rem;
+  font-weight: 900;
+  line-height: 1;
+  z-index: 10;
+  pointer-events: none;
+  /* Make sure it doesn't block clicks on the controls below */
+  text-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
+}
 
-      .life-total {
-        font-size: 8rem;
-        font-weight: 900;
-        line-height: 1;
-        z-index: 10;
-        pointer-events: none;
-        /* Make sure it doesn't block clicks on the controls below */
-        text-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
-      }
+.control-area {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
 
-      .control-area {
-        position: absolute;
-        top: 0;
-        height: 100%;
-        width: 50%;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: background-color 0.2s;
-      }
+.control-area:active {
+  background-color: rgba(0, 0, 0, 0.15);
+}
 
-      .control-area:active {
-        background-color: rgba(0, 0, 0, 0.15);
-      }
+.minus-area {
+  left: 0;
+}
 
-      .minus-area {
-        left: 0;
-      }
+.plus-area {
+  right: 0;
+}
 
-      .plus-area {
-        right: 0;
-      }
+#game-screen {
+  display: grid;
+  height: 100vh;
+  width: 100vw;
+}
 
-      #game-screen {
-        display: grid;
-        height: 100vh;
-        width: 100vw;
-      }
+.change-snackbar {
+  position: absolute;
+  top: 20px;
+  background-color: rgba(0, 0, 0, 0.6);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  font-size: 1.5rem;
+  font-weight: bold;
+  z-index: 20;
+  opacity: 0;
+  transform: translateY(-20px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  pointer-events: none;
+}
 
-      .change-snackbar {
-        position: absolute;
-        top: 20px;
-        background-color: rgba(0, 0, 0, 0.6);
-        color: white;
-        padding: 8px 16px;
-        border-radius: 9999px;
-        font-size: 1.5rem;
-        font-weight: bold;
-        z-index: 20;
-        opacity: 0;
-        transform: translateY(-20px);
-        transition: opacity 0.3s ease, transform 0.3s ease;
-        pointer-events: none;
-      }
-
-      .change-snackbar.show {
-        opacity: 1;
-        transform: translateY(0);
-      }
+.change-snackbar.show {
+  opacity: 1;
+  transform: translateY(0);
+}
