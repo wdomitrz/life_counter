@@ -1,15 +1,3 @@
-// --- PWA Service Worker Registration ---
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker
-      .register("service-worker.js")
-      .then((registration) =>
-        console.log("ServiceWorker registration successful")
-      )
-      .catch((err) => console.log("ServiceWorker registration failed: ", err));
-  });
-}
-
 // --- DOM Elements ---
 const setupScreen = document.getElementById("setup-screen");
 const gameScreen = document.getElementById("game-screen");
@@ -197,26 +185,6 @@ resetButton.addEventListener("click", () => {
   setupScreen.classList.remove("hidden");
 });
 
-// Virtual icons
-function createIcon(size) {
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d");
-  ctx.fillStyle = "#4f46e5";
-  ctx.fillRect(0, 0, size, size);
-  ctx.fillStyle = "white";
-  ctx.font = `${size * 0.6}px Inter, sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("♥", size / 2, size / 2 + size * 0.05); // Adjust icon position
-  return canvas.toDataURL();
-}
-document.querySelector('link[rel="apple-touch-icon"]').href = createIcon(192);
-
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker
-    .register("sw.js")
-    .then(() => console.log("SW registered"))
-    .catch((err) => console.error("SW failed", err));
+  navigator.serviceWorker.register("sw.js");
 }
