@@ -1,385 +1,99 @@
 <!DOCTYPE html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=no"
+    />
+    <title>Life Counter PWA</title>
+    <meta name="theme-color" content="#1a202c" />
+    <link rel="stylesheet" href="style.css" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="apple-touch-icon" href="icon-192x192.png" />
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
 
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Life Counter PWA</title>
-  <meta name="theme-color" content="#1a202c" />
-  <link rel="manifest" href="manifest.json">
-  <link rel="apple-touch-icon" href="icon-192x192.png">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    /* Custom styles for better UX */
-    body,
-    html {
-      height: 100%;
-      overflow: hidden;
-      font-family: 'Inter', sans-serif;
-      -webkit-tap-highlight-color: transparent;
-      /* Remove tap highlight on mobile */
-    }
+  <body class="bg-gray-800 text-white">
+    <!-- Setup Screen -->
+    <div
+      id="setup-screen"
+      class="flex flex-col items-center justify-center h-screen p-4"
+    >
+      <h1 class="text-4xl font-bold mb-8">Life Counter</h1>
 
-    .player-container {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100%;
-      width: 100%;
-      position: relative;
-      user-select: none;
-      /* Prevent text selection */
-      -webkit-user-select: none;
-      -moz-user-select: none;
-      -ms-user-select: none;
-      transition: transform 0.3s ease-in-out;
-    }
+      <div class="w-full max-w-sm space-y-6">
+        <div>
+          <label
+            for="player-count"
+            class="block text-lg font-medium text-gray-300 mb-2"
+            >Number of Players</label
+          >
+          <select
+            id="player-count"
+            class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            <option>1</option>
+            <option>2</option>
+            <option>3</option>
+            <option>4</option>
+            <option>5</option>
+            <option>6</option>
+            <option>7</option>
+            <option>8</option>
+            <option>9</option>
+          </select>
+        </div>
 
-    .life-total {
-      font-size: 8rem;
-      font-weight: 900;
-      line-height: 1;
-      z-index: 10;
-      pointer-events: none;
-      /* Make sure it doesn't block clicks on the controls below */
-      text-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
-    }
+        <div>
+          <label
+            for="life-points"
+            class="block text-lg font-medium text-gray-300 mb-2"
+            >Starting Life</label
+          >
+          <input
+            type="number"
+            id="life-points"
+            value="20"
+            class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          />
+        </div>
 
-    .control-area {
-      position: absolute;
-      top: 0;
-      height: 100%;
-      width: 50%;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: background-color 0.2s;
-    }
-
-    .control-area:active {
-      background-color: rgba(0, 0, 0, 0.15);
-    }
-
-    .minus-area {
-      left: 0;
-    }
-
-    .plus-area {
-      right: 0;
-    }
-
-    #game-screen {
-      display: grid;
-      height: 100vh;
-      width: 100vw;
-    }
-
-    .change-snackbar {
-      position: absolute;
-      top: 20px;
-      background-color: rgba(0, 0, 0, 0.6);
-      color: white;
-      padding: 8px 16px;
-      border-radius: 9999px;
-      font-size: 1.5rem;
-      font-weight: bold;
-      z-index: 20;
-      opacity: 0;
-      transform: translateY(-20px);
-      transition: opacity 0.3s ease, transform 0.3s ease;
-      pointer-events: none;
-    }
-
-    .change-snackbar.show {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  </style>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
-</head>
-
-<body class="bg-gray-800 text-white">
-
-  <!-- Setup Screen -->
-  <div id="setup-screen" class="flex flex-col items-center justify-center h-screen p-4">
-    <h1 class="text-4xl font-bold mb-8">Life Counter</h1>
-
-    <div class="w-full max-w-sm space-y-6">
-      <div>
-        <label for="player-count" class="block text-lg font-medium text-gray-300 mb-2">Number of Players</label>
-        <select id="player-count"
-          class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-          <option>2</option>
-          <option>3</option>
-          <option>4</option>
-          <option>5</option>
-          <option>6</option>
-          <option>7</option>
-          <option>8</option>
-          <option>9</option>
-        </select>
+        <button
+          id="start-game"
+          class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg text-xl transition-colors"
+        >
+          Start Game
+        </button>
       </div>
-
-      <div>
-        <label for="life-points" class="block text-lg font-medium text-gray-300 mb-2">Starting Life</label>
-        <input type="number" id="life-points" value="20"
-          class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-      </div>
-
-      <button id="start-game"
-        class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg text-xl transition-colors">
-        Start Game
-      </button>
     </div>
-  </div>
 
-  <!-- Game Screen -->
-  <div id="game-screen" class="hidden">
-    <!-- Player sections will be injected here by JavaScript -->
-  </div>
+    <!-- Game Screen -->
+    <div id="game-screen" class="hidden">
+      <!-- Player sections will be injected here by JavaScript -->
+    </div>
 
-  <!-- Reset Button -->
-  <button id="reset-button"
-    class="hidden fixed bottom-4 right-4 bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-5 rounded-full shadow-lg z-30 transition-transform hover:scale-105">
-    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 4l16 16" />
-    </svg>
-  </button>
+    <!-- Reset Button -->
+    <button
+      id="reset-button"
+      class="hidden fixed bottom-4 right-4 bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-5 rounded-full shadow-lg z-30 transition-transform hover:scale-105"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        class="h-6 w-6"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M4 4v5h5M20 20v-5h-5M4 4l16 16"
+        />
+      </svg>
+    </button>
 
-  <script>
-    // --- PWA Service Worker Registration ---
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('service-worker.js')
-          .then(registration => console.log('ServiceWorker registration successful'))
-          .catch(err => console.log('ServiceWorker registration failed: ', err));
-      });
-    }
-
-    // --- DOM Elements ---
-    const setupScreen = document.getElementById('setup-screen');
-    const gameScreen = document.getElementById('game-screen');
-    const playerCountSelect = document.getElementById('player-count');
-    const lifePointsInput = document.getElementById('life-points');
-    const startGameButton = document.getElementById('start-game');
-    const resetButton = document.getElementById('reset-button');
-
-    // --- Player Colors ---
-    const playerColors = [
-      'bg-red-500', 'bg-blue-500', 'bg-green-500',
-      'bg-yellow-500', 'bg-purple-500', 'bg-pink-500',
-      'bg-cyan-500', 'bg-orange-500', 'bg-lime-500'
-    ];
-
-    // --- Game State ---
-    let longPressTimer;
-    let longPressOccurred = false;
-    const LONG_PRESS_DURATION = 500; // ms
-    let playerStates = [];
-
-    // --- Game Logic ---
-    function createPlayerSection(playerIndex, initialLife, playerCount) {
-      const playerDiv = document.createElement('div');
-      const colorClass = playerColors[playerIndex % playerColors.length];
-      playerDiv.className = `player-container ${colorClass}`;
-      playerDiv.dataset.player = playerIndex;
-
-      // --- Rotation Logic ---
-      let rotation = 0;
-      if (playerCount <= 2) {
-        if (playerIndex === 0) rotation = 180;
-      } else if (playerCount <= 6 && playerCount > 2) {
-        if (playerIndex < 2) rotation = 180;
-      } else if (playerCount > 6) {
-        if (playerIndex < 3) rotation = 180;
-      }
-      playerDiv.style.transform = `rotate(${rotation}deg)`;
-
-      let currentLife = initialLife;
-
-      const lifeDisplay = document.createElement('div');
-      lifeDisplay.className = 'life-total';
-      lifeDisplay.textContent = currentLife;
-
-      const snackbar = document.createElement('div');
-      snackbar.className = 'change-snackbar';
-
-      const minusArea = document.createElement('div');
-      minusArea.className = 'control-area minus-area';
-
-      const plusArea = document.createElement('div');
-      plusArea.className = 'control-area plus-area';
-
-      // --- Event Listeners for Life Changes ---
-      const changeLife = (amount) => {
-        currentLife += amount;
-        lifeDisplay.textContent = currentLife;
-        updateSnackbar(playerIndex, amount);
-      };
-
-      const handlePress = (amount) => {
-        longPressOccurred = false;
-        longPressTimer = setTimeout(() => {
-          changeLife(amount * 5);
-          longPressOccurred = true;
-        }, LONG_PRESS_DURATION);
-      };
-
-      const handleRelease = (amount) => {
-        clearTimeout(longPressTimer);
-        if (!longPressOccurred) {
-          changeLife(amount);
-        }
-      };
-
-      minusArea.addEventListener('mousedown', () => handlePress(-1));
-      minusArea.addEventListener('mouseup', () => handleRelease(-1));
-      minusArea.addEventListener('mouseleave', () => clearTimeout(longPressTimer));
-      minusArea.addEventListener('touchstart', (e) => { e.preventDefault(); handlePress(-1); });
-      minusArea.addEventListener('touchend', () => handleRelease(-1));
-
-      plusArea.addEventListener('mousedown', () => handlePress(1));
-      plusArea.addEventListener('mouseup', () => handleRelease(1));
-      plusArea.addEventListener('mouseleave', () => clearTimeout(longPressTimer));
-      plusArea.addEventListener('touchstart', (e) => { e.preventDefault(); handlePress(1); });
-      plusArea.addEventListener('touchend', () => handleRelease(1));
-
-      playerDiv.appendChild(lifeDisplay);
-      playerDiv.appendChild(snackbar);
-      playerDiv.appendChild(minusArea);
-      playerDiv.appendChild(plusArea);
-
-      return playerDiv;
-    }
-
-    function updateSnackbar(playerIndex, amount) {
-      const state = playerStates[playerIndex];
-      const now = Date.now();
-
-      clearTimeout(state.snackbarTimer);
-
-      if (now - state.lastChangeTime < 3000) {
-        state.totalChange += amount;
-      } else {
-        state.totalChange = amount;
-      }
-      state.lastChangeTime = now;
-
-      const snackbar = gameScreen.children[playerIndex].querySelector('.change-snackbar');
-      if (state.totalChange !== 0) {
-        snackbar.textContent = (state.totalChange > 0 ? '+' : '') + state.totalChange;
-        snackbar.classList.add('show');
-      }
-
-      state.snackbarTimer = setTimeout(() => {
-        snackbar.classList.remove('show');
-      }, 2500);
-    }
-
-    function setupGameLayout(playerCount) {
-      gameScreen.innerHTML = ''; // Clear previous game
-      if (playerCount <= 2) {
-        gameScreen.style.gridTemplateColumns = '1fr';
-        gameScreen.style.gridTemplateRows = `repeat(${playerCount}, 1fr)`;
-      } else if (playerCount <= 4) {
-        gameScreen.style.gridTemplateColumns = '1fr 1fr';
-        gameScreen.style.gridTemplateRows = '1fr 1fr';
-      } else if (playerCount <= 6) {
-        gameScreen.style.gridTemplateColumns = '1fr 1fr';
-        gameScreen.style.gridTemplateRows = '1fr 1fr 1fr';
-      } else { // 7, 8, 9 players
-        gameScreen.style.gridTemplateColumns = '1fr 1fr 1fr';
-        gameScreen.style.gridTemplateRows = '1fr 1fr 1fr';
-      }
-    }
-
-    // --- Event Handlers ---
-    startGameButton.addEventListener('click', () => {
-      const playerCount = parseInt(playerCountSelect.value, 10);
-      const initialLife = parseInt(lifePointsInput.value, 10);
-
-      // Reset and initialize states for each player
-      playerStates = [];
-      for (let i = 0; i < playerCount; i++) {
-        playerStates.push({
-          lastChangeTime: 0,
-          totalChange: 0,
-          snackbarTimer: null
-        });
-      }
-
-      setupGameLayout(playerCount);
-
-      for (let i = 0; i < playerCount; i++) {
-        const playerSection = createPlayerSection(i, initialLife, playerCount);
-        gameScreen.appendChild(playerSection);
-      }
-
-      setupScreen.classList.add('hidden');
-      gameScreen.classList.remove('hidden');
-      gameScreen.classList.add('grid');
-      resetButton.classList.remove('hidden');
-    });
-
-    resetButton.addEventListener('click', () => {
-      gameScreen.classList.add('hidden');
-      gameScreen.classList.remove('grid');
-      resetButton.classList.add('hidden');
-      setupScreen.classList.remove('hidden');
-    });
-
-  </script>
-
-  <!-- Virtual manifest.json -->
-  <script>
-    const manifest = {
-      "name": "Life Counter PWA", "short_name": "LifeCounter", "start_url": "index.html",
-      "display": "standalone", "background_color": "#1a202c", "theme_color": "#1a202c",
-      "description": "A simple life counter for tabletop games.",
-      "icons": [{ "src": "icon-192x192.png", "sizes": "192x192", "type": "image/png" }, { "src": "icon-512x512.png", "sizes": "512x512", "type": "image/png" }]
-    };
-    const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
-    const manifestURL = URL.createObjectURL(blob);
-    document.querySelector('link[rel="manifest"]').setAttribute('href', manifestURL);
-  </script>
-
-  <!-- Virtual service-worker.js -->
-  <script>
-    const swContent = `
-            const CACHE_NAME = 'life-counter-cache-v4'; // Incremented cache version
-            const URLS_TO_CACHE = [ '/', 'index.html', 'https://cdn.tailwindcss.com', 'https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap' ];
-            self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(URLS_TO_CACHE))));
-            self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request))));
-            self.addEventListener('activate', e => {
-              const cacheWhitelist = [CACHE_NAME];
-              e.waitUntil(caches.keys().then(names => Promise.all(names.map(name => { if (cacheWhitelist.indexOf(name) === -1) return caches.delete(name); }))));
-            });
-        `;
-    const swBlob = new Blob([swContent], { type: 'application/javascript' });
-    const swURL = URL.createObjectURL(swBlob);
-    const originalRegister = navigator.serviceWorker.register;
-    navigator.serviceWorker.register = (scriptUrl, options) => scriptUrl === 'service-worker.js' ? originalRegister(swURL, options) : originalRegister(scriptUrl, options);
-  </script>
-
-  <!-- Virtual icons -->
-  <script>
-    function createIcon(size) {
-      const canvas = document.createElement('canvas');
-      canvas.width = size; canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#4f46e5';
-      ctx.fillRect(0, 0, size, size);
-      ctx.fillStyle = 'white';
-      ctx.font = `${size * 0.6}px Inter, sans-serif`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('♥', size / 2, size / 2 + size * 0.05); // Adjust icon position
-      return canvas.toDataURL();
-    }
-    document.querySelector('link[rel="apple-touch-icon"]').href = createIcon(192);
-  </script>
-</body>
-
+    <script src="app.js"></script>
+  </body>
 </html>
