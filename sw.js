@@ -1,5 +1,12 @@
-const CACHE = "pwa-cache-v1";
-const FILES = ["/", "/index.html", "/manifest.json"];
+const CACHE = "life_counter-cache";
+const FILES = [
+  "./",
+  "./app.js",
+  "./icon-512.png",
+  "./index.html",
+  "./manifest.json",
+  "./style.css",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(FILES)));
