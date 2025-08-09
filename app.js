@@ -34,36 +34,12 @@ function createPlayerSection(playerIndex, initialLife, playerCount) {
 
   // --- Rotation Logic ---
   let rotation = 0;
-  switch (true) {
-    case (playerCount = 2):
-      switch (true) {
-        case playerIndex === 0:
-          rotation = 180;
-          break;
-      }
-    case 2 < playerCount && playerCount <= 6:
-      switch (true) {
-        case playerIndex % 2 === 0:
-          rotation = 90;
-          break;
-        case playerIndex % 2 === 0:
-          rotation = 180 + 90;
-          break;
-      }
-      break;
-    case 6 < playerCount:
-      switch (true) {
-        case playerIndex % 3 === 0:
-          rotation = 90;
-          break;
-        case playerIndex % 3 === 2:
-          rotation = 180 + 90;
-          break;
-        case playerIndex % 3 === 1 && playerIndex === 1:
-          rotation = 180;
-          break;
-      }
-      break;
+  if (playerCount <= 2) {
+    if (playerIndex === 0) rotation = 180;
+  } else if (playerCount <= 6 && playerCount > 2) {
+    if (playerIndex < 2) rotation = 180;
+  } else if (playerCount > 6) {
+    if (playerIndex < 3) rotation = 180;
   }
   playerDiv.style.transform = `rotate(${rotation}deg)`;
 
