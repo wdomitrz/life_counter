@@ -1,1 +1,1 @@
-[Life Counte](https://wdomitrz.github.io/life_counter)
+[Life Counter](https://wdomitrz.github.io/life_counter)
