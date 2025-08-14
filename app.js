@@ -121,11 +121,8 @@ function updateSnackbar(playerIndex, amount) {
 
   const snackbar =
     gameScreen.children[playerIndex].querySelector(".change-snackbar");
-  if (state.totalChange !== 0) {
-    snackbar.textContent =
-      (state.totalChange > 0 ? "+" : "") + state.totalChange;
-    snackbar.classList.add("show");
-  }
+  snackbar.textContent = (state.totalChange > 0 ? "+" : "") + state.totalChange;
+  snackbar.classList.add("show");
 
   state.snackbarTimer = setTimeout(() => {
     snackbar.classList.remove("show");
