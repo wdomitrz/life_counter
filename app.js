@@ -185,3 +185,14 @@ resetButton.addEventListener("click", () => {
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js");
 }
+
+var wakeLock;
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    wakeLock = navigator.wakeLock.request("screen");
+  } else {
+    if (wakeLock !== null) {
+      wakeLock.release();
+    }
+  }
+});
