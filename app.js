@@ -24,6 +24,8 @@ let longPressTimer;
 let longPressOccurred = false;
 const LONG_PRESS_DURATION = 500; // ms
 let playerStates = [];
+let wakeLock = null;
+let gameStarted = false;
 
 // --- Game Logic ---
 function createPlayerSection(playerIndex, initialLife, playerCount) {
@@ -138,6 +140,8 @@ function setupGameLayout(playerCount) {
 
 // --- Event Handlers ---
 startGameButton.addEventListener("click", () => {
+  gameStarted = true;
+  enableWakeLock();
   const playerCount = parseInt(playerCountSelect.value, 10);
   const initialLife = parseInt(lifePointsInput.value, 10);
 
@@ -165,6 +169,8 @@ startGameButton.addEventListener("click", () => {
 });
 
 resetButton.addEventListener("click", () => {
+  gameStarted = false;
+  releaseWakeLock();
   gameScreen.classList.add("hidden");
   gameScreen.classList.remove("grid");
   resetButton.classList.add("hidden");
@@ -175,13 +181,23 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js");
 }
 
-var wakeLock;
+async function enableWakeLock() {
+  if (gameStarted) {
+    try {
+      wakeLock = await navigator.wakeLock.request("screen");
+    } catch (err) {}
+  }
+}
+
+async function releaseWakeLock() {
+  if (wakeLock === null) return;
+  try {
+    wakeLock.release();
+  } catch (err) {}
+}
+
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
-    wakeLock = navigator.wakeLock.request("screen");
-  } else {
-    if (wakeLock !== null) {
-      wakeLock.release();
-    }
+    enableWakeLock();
   }
 });
