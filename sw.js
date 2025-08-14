@@ -2,7 +2,8 @@ const CACHE = "life_counter-cache";
 const FILES = [
   "./",
   "./app.js",
-  "./icon-512.png",
+  "./icon_pwa.svg",
+  "./icon_website.svg",
   "./index.html",
   "./manifest.json",
   "./style.css",
