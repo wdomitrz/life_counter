@@ -34,12 +34,8 @@ function createPlayerSection(playerIndex, initialLife, playerCount) {
 
   // --- Rotation Logic ---
   let rotation = 0;
-  if (playerCount <= 2) {
-    if (playerIndex === 0) rotation = 180;
-  } else if (playerCount <= 6 && playerCount > 2) {
-    if (playerIndex < 2) rotation = 180;
-  } else if (playerCount > 6) {
-    if (playerIndex < 3) rotation = 180;
+  if (playerCount >= 2) {
+    if (2 * playerIndex < playerCount) rotation = 180;
   }
   playerDiv.style.transform = `rotate(${rotation}deg)`;
 
@@ -131,19 +127,12 @@ function updateSnackbar(playerIndex, amount) {
 
 function setupGameLayout(playerCount) {
   gameScreen.innerHTML = ""; // Clear previous game
-  if (playerCount <= 2) {
+  if (playerCount <= 3) {
     gameScreen.style.gridTemplateColumns = "1fr";
     gameScreen.style.gridTemplateRows = `repeat(${playerCount}, 1fr)`;
-  } else if (playerCount <= 4) {
-    gameScreen.style.gridTemplateColumns = "1fr 1fr";
-    gameScreen.style.gridTemplateRows = "1fr 1fr";
-  } else if (playerCount <= 6) {
-    gameScreen.style.gridTemplateColumns = "1fr 1fr";
-    gameScreen.style.gridTemplateRows = "1fr 1fr 1fr";
   } else {
-    // 7, 8, 9 players
-    gameScreen.style.gridTemplateColumns = "1fr 1fr 1fr";
-    gameScreen.style.gridTemplateRows = "1fr 1fr 1fr";
+    gameScreen.style.gridTemplateColumns = "1fr 1fr";
+    gameScreen.style.gridTemplateRows = `repeat(${playerCount / 2}, 1fr)`;
   }
 }
 
