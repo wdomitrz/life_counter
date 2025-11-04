@@ -1,6 +1,5 @@
 {
   "name": "Life Counter",
-  "short_name": "Life Counter",
   "start_url": ".",
   "display": "standalone",
   "icons": [{ "src": "icon.svg", "sizes": "512x512", "type": "image/svg+xml" }]
