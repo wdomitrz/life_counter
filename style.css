@@ -15,6 +15,7 @@ html {
   height: 100%;
   width: 100%;
   position: relative;
+  container-type: inline-size;
   user-select: none;
   /* Prevent text selection */
   -webkit-user-select: none;
@@ -24,7 +25,8 @@ html {
 }
 
 .life-total {
-  font-size: 8rem;
+  /* Scale with the individual player panel, not the viewport. */
+  font-size: clamp(3rem, 35cqi, 8rem);
   font-weight: 900;
   line-height: 1;
   z-index: 10;
@@ -41,7 +43,7 @@ html {
   cursor: pointer;
   display: flex;
   align-items: center;
-  justify-content: center;
+  padding: 0 0.75rem;
   transition: background-color 0.2s;
   color: rgba(255, 255, 255, 0.5);
   font-size: clamp(3rem, 12vw, 7rem);
@@ -56,10 +58,12 @@ html {
 
 .minus-area {
   left: 0;
+  justify-content: flex-start;
 }
 
 .plus-area {
   right: 0;
+  justify-content: flex-end;
 }
 
 #game-screen {
