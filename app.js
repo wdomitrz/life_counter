@@ -23,6 +23,7 @@ const playerColors = [
 let longPressTimer;
 let longPressOccurred = false;
 const LONG_PRESS_DURATION = 500; // ms
+const LONG_PRESS_CHANGE = 10;
 let playerStates = [];
 let wakeLock = null;
 let gameStarted = false;
@@ -52,9 +53,13 @@ function createPlayerSection(playerIndex, initialLife, playerCount) {
 
   const minusArea = document.createElement("div");
   minusArea.className = "control-area minus-area";
+  minusArea.setAttribute("aria-label", "Decrease life");
+  minusArea.textContent = "−";
 
   const plusArea = document.createElement("div");
   plusArea.className = "control-area plus-area";
+  plusArea.setAttribute("aria-label", "Increase life");
+  plusArea.textContent = "+";
 
   // --- Event Listeners for Life Changes ---
   const changeLife = (amount) => {
@@ -66,7 +71,7 @@ function createPlayerSection(playerIndex, initialLife, playerCount) {
   const handlePress = (amount) => {
     longPressOccurred = false;
     longPressTimer = setTimeout(() => {
-      changeLife(amount * 5);
+      changeLife(amount * LONG_PRESS_CHANGE);
       longPressOccurred = true;
     }, LONG_PRESS_DURATION);
   };
