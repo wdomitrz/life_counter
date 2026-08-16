@@ -1,4 +1,4 @@
-const CACHE = "life_counter-cache";
+const CACHE = "life_counter-cache-v2";
 const FILES = [
   "./",
   "./app.js",

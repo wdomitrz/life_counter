@@ -43,6 +43,11 @@ html {
   align-items: center;
   justify-content: center;
   transition: background-color 0.2s;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: clamp(3rem, 12vw, 7rem);
+  font-weight: 700;
+  line-height: 1;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
 .control-area:active {
