@@ -1,12 +1,48 @@
 # Copyright (c) 2026 Witalis Domitrz <witekdomitrz@gmail.com>
 # AGPL License
 [package]
-name = "life_counter"
+name = "life-counter"
 version = "0.1.0"
 edition = "2021"
 license = "AGPL-3.0-only"
+description = "Private, browser-side 1-12 player life tracker for tabletop games"
 
 [lib]
 name = "life_counter"
 crate-type = ["cdylib", "rlib"]
 path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[build-dependencies]
+usvg = { version = "0.48", default-features = false }
+resvg = { version = "0.48", default-features = false }
+tiny-skia = "0.12"
+serde_json = "1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "=0.2.128"
+wasm-bindgen-futures = "0.4.78"
+js-sys = "0.3.105"
+# `WakeLockType` is required alongside `WakeLock`/`WakeLockSentinel`: `request()`
+# takes a `WakeLockType` argument, and `VisibilityState` is what
+# `Document::visibility_state` returns. `PointerEvent` is the one pointer event
+# type used, and `DomTokenList` backs `Element::class_list`.
+web-sys = { version = "0.3.105", features = [
+  "Window", "Document", "Element", "Node", "EventTarget", "Event", "PointerEvent",
+  "DomTokenList", "CssStyleDeclaration",
+  "HtmlElement", "HtmlSelectElement", "HtmlButtonElement", "HtmlInputElement",
+  "Navigator", "WakeLock", "WakeLockSentinel", "WakeLockType",
+  "ServiceWorkerContainer", "ServiceWorkerRegistration",
+  "Performance", "VisibilityState", "console"
+] }
+
+[lints.rust]
+warnings = "deny"
+
+[profile.release]
+strip = true
+lto = true
+opt-level = "s"
