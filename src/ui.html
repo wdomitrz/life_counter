@@ -92,7 +92,7 @@ html,body{height:100%;margin:0;overflow:hidden;background:var(--gray-800);color:
 <button id="reset-button" type="button" aria-label="Start a new round" title="New round" hidden>&#10227;</button>
 
 <script type="module">
-import('./app.js').then(m => m.default()).catch(error => { document.getElementById('setup-status').textContent = 'Life Counter could not start.'; const box = document.getElementById('setup-error'); box.hidden = false; box.textContent = 'Could not load the Rust app. Reload the page or check your connection. ' + error; });
+import('./app.js').then(m => m.default()).catch(error => { document.getElementById('setup-status').textContent = ''; const box = document.getElementById('setup-error'); box.hidden = false; box.textContent = 'Life Counter could not start. Reload the page, or check your connection and try again.'; console.error(error); });
 </script>
 </body>
 </html>
