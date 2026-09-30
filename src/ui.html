@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1f2937">
+<meta name="description" content="A 1-12 player life counter for tabletop games.">
+<title>Life Counter</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<style>
+/*
+  The original shipped Tailwind as a committed 13 KiB `tw.css` and painted the
+  whole board with eleven utility classes. This keeps the same colours, the same
+  layout and the same wording as plain CSS custom properties: the nine player
+  colours are the Tailwind `-500` values written out as hex, and the grays and
+  indigos below are the ones the old utility classes resolved to.
+*/
+:root{
+  --gray-800:#1f2937;
+  --gray-700:#374151;
+  --gray-600:#4b5563;
+  --gray-300:#d1d5db;
+  --indigo-500:#6366f1;
+  --indigo-600:#4f46e5;
+  --indigo-700:#4338ca;
+  --red-600:#dc2626;
+  --red-700:#b91c1c;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden;background:var(--gray-800);color:#fff;font-family:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+[hidden]{display:none!important}
+
+/* --- Setup screen --- */
+#setup-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;padding:1rem}
+#setup-screen h1{font-size:2.25rem;font-weight:700;margin:0 0 2rem}
+#setup-form{width:100%;max-width:24rem;display:flex;flex-direction:column;gap:1.5rem}
+.field label{display:block;font-size:1.125rem;font-weight:500;color:var(--gray-300);margin-bottom:.5rem}
+.field select,.field input{width:100%;background:var(--gray-700);color:#fff;border:1px solid var(--gray-600);border-radius:.5rem;padding:.75rem;font-size:1.125rem;font-family:inherit}
+.field select{cursor:pointer}
+.field select:focus-visible,.field input:focus-visible{outline:none;box-shadow:0 0 0 2px var(--indigo-500);border-color:var(--indigo-500)}
+#start-game{width:100%;background:var(--indigo-600);border:0;color:#fff;font-weight:700;font-size:1.25rem;font-family:inherit;padding:.75rem 1rem;border-radius:.5rem;cursor:pointer;transition:background-color .2s}
+#start-game:hover{background:var(--indigo-700)}
+#start-game:focus-visible{outline:3px solid var(--indigo-500);outline-offset:3px}
+#setup-status{margin:1.5rem 0 0;text-align:center;color:var(--gray-300);font-size:.9rem;min-height:1.2em}
+#setup-error{margin:1rem 0 0;text-align:center;color:#fecaca;font-size:.9rem;overflow-wrap:anywhere}
+
+/* --- Game screen --- */
+#game-screen{display:grid;height:100vh;width:100vw}
+.player-container{display:flex;justify-content:center;align-items:center;height:100%;width:100%;position:relative;container-type:inline-size;transition:transform .3s ease-in-out}
+.life-total{font-size:clamp(3rem,35cqi,8rem);font-weight:900;line-height:1;z-index:10;pointer-events:none;text-shadow:0 0 15px rgba(0,0,0,.4);font-variant-numeric:tabular-nums}
+.control-area{position:absolute;top:0;height:100%;width:50%;cursor:pointer;display:flex;align-items:center;padding:0 .75rem;transition:background-color .2s;color:rgba(255,255,255,.5);font-size:clamp(3rem,12vw,7rem);font-weight:700;line-height:1;text-shadow:0 2px 8px rgba(0,0,0,.25);touch-action:manipulation;-webkit-user-select:none;user-select:none}
+.control-area:active{background-color:rgba(0,0,0,.15)}
+.minus-area{left:0;justify-content:flex-start}
+.plus-area{right:0;justify-content:flex-end}
+.change-snackbar{position:absolute;top:20px;background-color:rgba(0,0,0,.6);color:#fff;padding:8px 16px;border-radius:9999px;font-size:1.5rem;font-weight:700;z-index:20;opacity:0;transform:translateY(-20px);transition:opacity .3s ease,transform .3s ease;pointer-events:none}
+.change-snackbar.show{opacity:1;transform:translateY(0)}
+
+/* --- Round reset --- */
+#reset-button{position:fixed;bottom:1rem;right:1rem;background:var(--red-600);border:0;color:#fff;font-weight:700;font-size:1.25rem;font-family:inherit;padding:.75rem 1.25rem;border-radius:9999px;box-shadow:0 10px 15px -3px rgba(0,0,0,.4);z-index:30;cursor:pointer;transition:background-color .2s,transform .2s}
+#reset-button:hover{background:var(--red-700);transform:scale(1.05)}
+#reset-button:focus-visible{outline:3px solid var(--red-600);outline-offset:3px}
+
+@media (prefers-reduced-motion:reduce){
+  /* The board's rotation and the snackbar's slide are decoration; the life
+     totals have to be readable at all times. */
+  *{transition:none!important}
+}
+</style>
+</head>
+<body>
+<div id="setup-screen">
+  <h1>Life Counter</h1>
+  <div id="setup-form">
+    <div class="field">
+      <label for="player-count">Number of Players</label>
+      <select id="player-count" name="player-count"></select>
+    </div>
+    <div class="field">
+      <label for="life-points">Starting Life</label>
+      <input type="number" id="life-points" name="life-points" value="20" min="1" max="9999" step="1" inputmode="numeric">
+    </div>
+    <button id="start-game" type="button">Start Game</button>
+  </div>
+  <p id="setup-status" role="status" aria-live="polite">Loading…</p>
+  <p id="setup-error" role="alert" hidden></p>
+</div>
+
+<div id="game-screen" hidden></div>
+
+<button id="reset-button" type="button" aria-label="Start a new round" title="New round" hidden>&#10227;</button>
+
+<script type="module">
+import('./app.js').then(m => m.default()).catch(error => { document.getElementById('setup-status').textContent = 'Life Counter could not start.'; const box = document.getElementById('setup-error'); box.hidden = false; box.textContent = 'Could not load the Rust app. Reload the page or check your connection. ' + error; });
+</script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+# web-sys 0.3.105 puts the whole Screen Wake Lock API behind this cfg, not
+# just behind its `WakeLock*` cargo features: `Navigator::wake_lock`,
+# `WakeLock::request` and `WakeLockSentinel::release` each carry
+# `#[cfg(web_sys_unstable_apis)]` *before* their `#[cfg(feature = ...)]`, and
+# web-sys's own doc comments say so. Without this line the crate compiles with
+# the features enabled and still has no `wake_lock` method to call, so the wake
+# lock silently does not compile at all rather than failing in a browser.
+#
+# It is set per-target rather than globally because only the wasm build needs
+# it: `src/ui.rs` is `#[cfg(target_arch = "wasm32")]`, so the host build and
+# `cargo test` never see the Wake Lock code. A global `rustflags` would also
+# apply the flag to every dependency for no reason.
+#
+# This is the app's own `.cargo/config.toml`. Nothing outside this repository is
+# affected, and CI builds this same directory, so the flag reaches the clippy
+# pass as well as the wasm build.
+[target.wasm32-unknown-unknown]
+rustflags = ["--cfg=web_sys_unstable_apis"]
