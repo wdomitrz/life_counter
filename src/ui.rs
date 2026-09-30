@@ -513,12 +513,17 @@ fn start() -> Result<(), JsValue> {
         let start_button = element("start-game")?;
         listen(&start_button, "click", move |_| {
             if let Err(error) = start_game(&handle) {
-                show_error(&format!(
-                    "{:?}",
-                    error
-                        .as_string()
-                        .unwrap_or_else(|| "the game could not start".into())
-                ));
+                // Say what the user can do about it, and nothing else. A raw
+                // `Debug` of the underlying JS error would put implementation
+                // detail and a stack-ish string in front of someone trying to
+                // start a game; the cause is ours to debug, not theirs.
+                if error
+                    .as_string()
+                    .is_none_or(|message| message.trim().is_empty())
+                {
+                    web_sys::console::error_1(&error);
+                }
+                show_error("The game could not start. Try reloading the page.");
             }
         })?;
     }
@@ -573,6 +578,15 @@ fn start() -> Result<(), JsValue> {
 
     register_service_worker();
 
-    element("setup-status")?.set_text_content(Some("Rust is ready. Tap Start Game."));
+    // The status line carried "Loading…" until now, so a screen reader was not
+    // left in silence while the app booted. Once it is up it says nothing at
+    // all: there is no progress left to report, and the Start Game button is
+    // right there. An empty `role="status"` element announces nothing, which is
+    // the correct thing to announce.
+    //
+    // Nothing the user can see may name the implementation. "Rust is ready"
+    // tells them nothing about a life counter and only exists to prove the
+    // module booted; the technology is not the user's business.
+    element("setup-status")?.set_text_content(Some(""));
     Ok(())
 }

@@ -304,6 +304,133 @@ fn every_precached_file_is_published_into_the_site() {
     );
 }
 
+/// Nothing the user can see may name the implementation.
+///
+/// "Rust is ready. Tap Start Game." sat in the status line of the first
+/// released build. It told a person nothing about a life counter, and existed
+/// only to prove the module had booted. The technology is not the user's
+/// business; a message that has to explain itself in implementation terms is a
+/// message aimed at the wrong reader.
+///
+/// The check is deliberately narrow. It looks at string *literals* in the shell
+/// and in the code that writes to the DOM, because those are what a person
+/// ends up reading. Comments, docs and the crate manifest should go on saying
+/// "Rust" in as much detail as they like — that documentation is for whoever
+/// maintains the crate, and stripping it would be its own kind of damage. The
+/// line is simply that implementation vocabulary may live in code and docs,
+/// never in the interface.
+#[test]
+fn no_user_visible_text_names_the_implementation() {
+    const FORBIDDEN: [&str; 6] = [
+        "rust",
+        "webassembly",
+        "wasm",
+        "javascript",
+        "bindings",
+        "compile",
+    ];
+
+    let mut checked = 0usize;
+
+    // The shell, including the loader-failure message its inline script writes.
+    //
+    // That script is a single line that begins with `import(...)` and then
+    // contains the prose a user reads when the app fails to load — which is
+    // exactly when the wording has to be clearest. So the line is still
+    // checked; only the `import('./app.js')` expression itself is exempt, by
+    // trimming it off the front before the scan rather than by skipping the
+    // whole line.
+    let page = shell();
+    for (number, line) in page.lines().enumerate() {
+        let prose = match line.find("import(") {
+            Some(index) => {
+                let start = line[index..]
+                    .find(")")
+                    .map_or(line.len(), |end| index + end + 1);
+                format!("{}{}", &line[..index], &line[start..])
+            }
+            None => line.to_string(),
+        };
+        let lower = prose.to_lowercase();
+        for word in FORBIDDEN {
+            assert!(
+                !lower.contains(word),
+                "src/ui.html:{} says {word:?} in text a user can see: {line:?}",
+                number + 1
+            );
+        }
+        checked += 1;
+    }
+
+    // Everything written into the DOM from Rust: the status line, the error
+    // line, and the player's own numbers.
+    let ui = std::fs::read_to_string(root().join("src/ui.rs")).expect("the UI module");
+    for (number, line) in ui.lines().enumerate() {
+        let trimmed = line.trim_start();
+        // Comments are documentation, not interface.
+        if trimmed.starts_with("//") {
+            continue;
+        }
+        let lower = line.to_lowercase();
+        // Only string literals can reach the DOM, so only they are checked.
+        let mut rest = line;
+        while let Some(start) = rest.find('"') {
+            rest = &rest[start + 1..];
+            let Some(end) = rest.find('"') else {
+                break;
+            };
+            let literal = &rest[..end];
+            rest = &rest[end + 1..];
+            let lower_literal = literal.to_lowercase();
+            for word in FORBIDDEN {
+                assert!(
+                    !lower_literal.contains(word),
+                    "src/ui.rs:{} has a string literal containing {word:?}, and it is \
+                     written into the page: {literal:?}",
+                    number + 1
+                );
+            }
+            checked += 1;
+        }
+        let _ = lower;
+    }
+
+    assert!(
+        checked >= 6,
+        "the scan found almost nothing to check ({checked} strings); it is not \
+         looking at the right places"
+    );
+
+    // And the meta description and manifest, which is what a search engine and
+    // a share sheet show. The manifest is assembled in `build.rs`.
+    let description = page
+        .split("name=\"description\" content=\"")
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .expect("the shell must carry a meta description");
+    for word in FORBIDDEN {
+        assert!(
+            !description.to_lowercase().contains(word),
+            "the meta description says {word:?}: {description:?}"
+        );
+    }
+    let build = std::fs::read_to_string(root().join("build.rs")).expect("the build script");
+    let manifest_names: Vec<&str> = build
+        .match_indices('"')
+        .map(|(index, _)| &build[index + 1..])
+        .take_while(|rest| !rest.contains('"'))
+        .map(|rest| &rest[..rest.find('"').unwrap_or(0)])
+        .collect();
+    for name in manifest_names {
+        for word in FORBIDDEN {
+            assert!(
+                !name.to_lowercase().contains(word),
+                "the manifest carries {name:?}, which says {word:?}"
+            );
+        }
+    }
+}
+
 /// The manifest is assembled by `build.rs`, so there is no committed copy to
 /// assert on — but the icon list it writes is derived from what was rasterized,
 /// and `tests/shell.rs` checks the sources that decide it: both PNG sizes are
