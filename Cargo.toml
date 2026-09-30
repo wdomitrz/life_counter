@@ -36,6 +36,7 @@ web-sys = { version = "0.3.105", features = [
   "HtmlElement", "HtmlSelectElement", "HtmlButtonElement", "HtmlInputElement",
   "Navigator", "WakeLock", "WakeLockSentinel", "WakeLockType",
   "ServiceWorkerContainer", "ServiceWorkerRegistration",
+  "ServiceWorker", "RegistrationOptions", "Location", "Url",
   "Performance", "VisibilityState", "console"
 ] }
 
