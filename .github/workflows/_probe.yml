@@ -1,0 +1,28 @@
+# Throwaway: does the pages.yml deploy gate evaluate true on a NON-fork?
+name: probe
+on:
+  push:
+    branches: [probe-fork-flag]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: evaluate
+        run: |
+          set -eu
+          raw="${{ github.event.repository.fork }}"
+          echo "repository.fork raw   = [${raw}]"
+          echo "is_fork_truthy        = ${{ github.event.repository.fork == true }}"
+          # exactly the expression shipped in chess_clock pages.yml
+          deploy_true=${{ github.ref == 'refs/heads/master' && !github.event.repository.fork }}
+          echo "deploy gate on master = ${deploy_true}"
+          # negative control: the same gate on a fork must be false
+          fork_gate_true=${{ github.ref == 'refs/heads/master' && !github.event.repository.fork == true }}
+          echo "(sanity) as_parenthesised = ${fork_gate_true}"
+          if [ "${deploy_true}" = "true" ]; then
+            echo "::notice title=PROBE-OK::non-fork repository DOES reach the deploy gate"
+          else
+            echo "::error title=PROBE-FAIL::non-fork repository was BLOCKED from deploying"
+          fi
