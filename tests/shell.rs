@@ -923,6 +923,55 @@ fn only_master_can_reach_the_live_site() {
         "the `deploy` job must be gated on the build being for master"
     );
 
+    // ... and it must ALSO be gated on not being a fork. This file is
+    // byte-identical in `wdomitrz/life_counter` and in its fork
+    // `bot-git-ai/life_counter`, so a gate that tests only the branch name
+    // cannot tell the two repositories apart: both have a `master`, and a push
+    // to the fork's master would try to publish. Two things then go wrong, and
+    // the first is the one that happens. A fork has no Pages site of its own
+    // until someone enables one by hand, so every push to fork master dies
+    // with "Creating Pages deployment failed ... Ensure GitHub Pages has been
+    // enabled". And if Pages were enabled there, the fork would serve its own
+    // copy, which drifts from the published site as soon as the two masters
+    // diverge.
+    //
+    // `github.event.repository.fork` is the discriminator because it needs no
+    // configuration: the event supplies it, false upstream and true in the
+    // fork. The obvious alternative, a repository Actions variable, has the
+    // failure mode this assertion exists to prevent -- it would have to be set
+    // on the *upstream* repository to publish, and no account but the user's can
+    // do that, so the gate would ship silently off on the one repository where
+    // it matters.
+    //
+    // Read out of the comment-stripped text, or the comment block above the
+    // `if:` -- which names both halves of the gate while explaining it --
+    // would satisfy this on its own. That is not hypothetical: it is the
+    // mistake the `RUSTFLAGS` assertion in this same file was shipped with, and
+    // it shipped.
+    let live = strip_yaml_comments(&pages);
+    let live_gate = live
+        .split("\n  deploy:")
+        .nth(1)
+        .and_then(|job| job.split_once("if:").map(|(_, after)| after))
+        .expect("the `deploy` job must have an `if:` gate");
+    assert!(
+        live_gate.contains("!github.event.repository.fork"),
+        "the `deploy` job must be gated on `!github.event.repository.fork`; this workflow is \
+         byte-identical in the fork `bot-git-ai/life_counter`, so a branch-name-only gate \
+         publishes from the fork too -- failing with 'Ensure GitHub Pages has been enabled' \
+         until Pages is enabled there, and serving a divergent copy afterwards",
+    );
+    // The two halves are one condition, not two jobs: an `if:` per job would
+    // be an AND across two independent gates, and a `build`-job gate would
+    // silently stop the *build* from running on the fork rather than just its
+    // publish, which is the opposite of what this is for -- the fork is where
+    // the site is checked before it is ever proposed upstream.
+    assert!(
+        live_gate.contains("github.ref == 'refs/heads/master'"),
+        "the fork rule must extend the master gate, not replace it: `deploy` must be one `if:` \
+         testing both `github.ref` and `github.event.repository.fork`",
+    );
+
     // And the permissions that can actually publish must be scoped to that job
     // rather than granted workflow-wide, so a build step or a third-party
     // action added later cannot spend them.
@@ -1130,5 +1179,95 @@ fn the_deploy_job_builds_and_inspects_the_site_it_publishes() {
     assert!(
         live.contains("89504e470d0a1a0a"),
         "pages.yml must check the install icons are real PNGs and not truncated writes"
+    );
+}
+
+/// Every `run:` block in the workflow has to be valid bash.
+///
+/// This is not a style preference. A `run:` body that does not parse is
+/// diagnosed by the runner *before the first command executes*, so the step dies
+/// at `line 35: syntax error near unexpected token '}'` having checked nothing
+/// at all -- and, because the failure is in the step that was supposed to verify
+/// the site, the deployment that follows it never runs. That is exactly what
+/// happened on 2026-10-02: the `__VERSION__` guard closed its `if` with the
+/// `}` belonging to the `|| { ...; }` one-liner idiom used on the lines around
+/// it, and `wdomitrz.github.io/life_counter` stopped publishing.
+///
+/// Nothing else in this suite can catch it. No test runs the workflow, the
+/// release gate does not build wasm, and `tests/shell.rs` otherwise asserts on
+/// source *text* -- where `exit 1; }` and `exit 1` differ by one character and
+/// every other assertion still passes. So the check is `bash -n`, over every
+/// block, here.
+///
+/// The runner's own de-indentation is reproduced rather than assumed: a YAML
+/// block scalar keeps the common indentation, so the body is handed to `bash`
+/// with that indentation removed.
+#[test]
+fn every_run_block_in_the_workflow_is_valid_bash() {
+    let Some(pages) = workflow("pages.yml") else {
+        return;
+    };
+
+    // Pull the `run:` bodies out of the committed YAML without a dependency on
+    // a YAML crate. There are two forms: a one-liner (`run: cargo test
+    // --locked`) and a block scalar (`run: |`) whose following lines are
+    // indented deeper than the key. Both are valid bash and both are checked.
+    let mut checked = 0usize;
+    let mut lines = pages.lines().peekable();
+    while let Some(line) = lines.next() {
+        let Some(rest) = line.trim_start().strip_prefix("run:") else {
+            continue;
+        };
+        let inline = rest.trim();
+        let mut body: Vec<String> = Vec::new();
+        if inline.ends_with('|') || inline.ends_with('>') {
+            let indent = line.len() - line.trim_start().len();
+            while let Some(next) = lines.peek() {
+                let blank = next.trim().is_empty();
+                let deeper = next.len() - next.trim_start().len() > indent;
+                if !blank && !deeper {
+                    break;
+                }
+                body.push(next.get(indent..).unwrap_or("").to_owned());
+                lines.next();
+            }
+            // Trailing blank lines are an artefact of the block scalar, not
+            // content.
+            while body.last().is_some_and(|line| line.trim().is_empty()) {
+                body.pop();
+            }
+        } else {
+            body.push(inline.to_owned());
+        }
+        let script = body.join("\n");
+        assert!(
+            !script.trim().is_empty(),
+            "a `run:` block in the workflow is empty; the step would do nothing and pass",
+        );
+        if inline.ends_with('|') || inline.ends_with('>') {
+            assert!(
+                !script.trim().is_empty(),
+                "a `run:` block scalar in the workflow is empty; the step would do nothing and \
+                 pass",
+            );
+        }
+
+        let mut bash = std::process::Command::new("bash");
+        bash.arg("-n").arg("-c").arg(&script);
+        let output = bash
+            .output()
+            .expect("bash -n is available; CI runs ubuntu-latest");
+        assert!(
+            output.status.success(),
+            "a `run:` block is not valid bash, so the runner rejects the step before executing \
+             any of it:\n{}",
+            String::from_utf8_lossy(&output.stderr),
+        );
+        checked += 1;
+    }
+
+    assert!(
+        checked >= 5,
+        "expected to check every step of the workflow, found only {checked} `run:` blocks",
     );
 }
