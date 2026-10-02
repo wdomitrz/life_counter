@@ -239,7 +239,8 @@ jobs:
           # placeholder would ship a service worker that never invalidates.
           if grep -q '__VERSION__' dist/service-worker.js; then
             echo "::error::dist/service-worker.js still carries the __VERSION__ placeholder"
-            exit 1; }
+            exit 1
+          fi
           # The bindings must actually be bindings: the page loads this file
           # with a dynamic import, so a truncated one fails only in a browser,
           # long after the build looked fine.
@@ -294,7 +295,25 @@ jobs:
     # overwritten, and a pull request from a fork gets no token with `pages:
     # write` either way. Being explicit here means a trigger widened later does
     # not silently hand every branch a publish button.
-    if: github.ref == 'refs/heads/master'
+    #
+    # ... and it must NOT publish from a fork either. This file is
+    # byte-identical in `wdomitrz/life_counter` and in its fork
+    # `bot-git-ai/life_counter`, so a gate that tests only the branch name
+    # cannot tell the two repositories apart: both have a `master`. Without the
+    # second clause every push to the fork's master tries to publish and dies
+    # with "Creating Pages deployment failed ... Ensure GitHub Pages has been
+    # enabled", because a fork has no Pages site of its own until someone
+    # enables one by hand. The site belongs upstream, so the fork should skip
+    # the publish -- and it still runs the whole build, wasm, bindings and the
+    # eight-file check included.
+    #
+    # `github.event.repository.fork` is the discriminator because it needs no
+    # configuration: the event supplies it, false upstream and true in the fork.
+    # The obvious alternative, a repository Actions variable, would have to be
+    # set on the *upstream* repository to publish, and no account but the
+    # user's can do that -- so it would ship silently off on the one repository
+    # where it matters.
+    if: github.ref == 'refs/heads/master' && !github.event.repository.fork
     needs: build
     runs-on: ubuntu-latest
 
