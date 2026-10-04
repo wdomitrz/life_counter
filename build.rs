@@ -30,7 +30,7 @@ use std::fmt::Write as _;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
-/// The committed icon. Rasterized here, never committed as a PNG.
+/// The committed icon, rasterized into `dist/` and never committed as a PNG.
 const ICON: &str = "assets/icon.svg";
 
 /// Shell files this script copies verbatim from a committed source.
@@ -92,10 +92,8 @@ fn main() {
 
     built.push(("manifest.webmanifest", manifest().into_bytes()));
 
-    // The worker's own template is hashed too, and it is deliberately kept out
-    // of `built` so it is hashed exactly once, in template form. A change to
-    // the caching logic must invalidate the cache: clients holding the old
-    // worker would otherwise keep running stale logic against new assets.
+    // The worker's own template is hashed too, and is deliberately kept out of
+    // `built` so it is hashed exactly once, in template form.
     let template = std::fs::read_to_string(root.join("src/service-worker.js"))
         .unwrap_or_else(|error| panic!("reading src/service-worker.js: {error}"));
     let version = cache_version(&built, &template);

@@ -29,18 +29,17 @@ use crate::counter::{GameState, PLAYER_COUNT_OPTIONS};
 
 /// How often the domain layer is polled, in ms.
 ///
-/// The long press matures at 500 ms and the snackbar hides at 2500 ms after a
+/// The long press matures at 500 ms and the snackbar hides 2500 ms after a
 /// change; nothing in the app needs either to the millisecond. 16 ms is one
-/// animation frame, which bounds the worst case between the deadline and the
-/// change at about a frame.
+/// animation frame, which bounds the gap between the deadline and the change
+/// at about a frame.
 const TICK_MS: i64 = 16;
 
 /// The scope this app's worker is registered for.
 ///
 /// Stated rather than inherited, and it is the one string that has to agree
 /// with `src/service-worker.js`: the worker resolves its own directory the same
-/// way, from `self.location`. See [`register_service_worker`] for why this is
-/// not optional.
+/// way, from `self.location`. See [`register_service_worker`].
 const SCOPE: &str = "./";
 
 /// The app's mutable state, shared with every listener.
@@ -64,6 +63,7 @@ struct App {
     press: Option<(usize, i64)>,
 }
 
+/// Show `message` on the setup screen's error line.
 fn document() -> Result<Document, JsValue> {
     web_sys::window()
         .and_then(|window| window.document())
@@ -155,7 +155,7 @@ fn tick(state: &Shared) {
     }
 }
 
-/// Redraw one player: their life total, their snackbar and their panel colour.
+/// Redraw one player's life total and snackbar.
 fn redraw_player(state: &Shared, index: usize) -> Result<(), JsValue> {
     let Some(snapshot) = state
         .borrow()
@@ -170,9 +170,9 @@ fn redraw_player(state: &Shared, index: usize) -> Result<(), JsValue> {
     {
         total.set_text_content(Some(&snapshot.life.to_string()));
     }
-    // The snackbar's own element, addressed by player rather than by grid
-    // position: the original reached into `gameScreen.children[i]`, which is the
-    // same thing written more fragile.
+    // Addressed by player rather than by grid position: the original reached
+    // into `gameScreen.children[i]`, which is the same thing written more
+    // fragile.
     let selector = format!("[data-player='{index}'] .change-snackbar");
     if let Some(snackbar) = document()?.query_selector(&selector)? {
         match &snapshot.snackbar {
@@ -195,7 +195,7 @@ fn player_panel(index: usize) -> Result<Element, JsValue> {
         .ok_or_else(|| JsValue::from_str(&format!("No panel for player {index}")))
 }
 
-/// A panel's inline style, which is how the rotation and the colour are set.
+/// A panel's inline style.
 fn style_of(element: &Element) -> Result<web_sys::CssStyleDeclaration, JsValue> {
     Ok(element.clone().dyn_into::<HtmlElement>()?.style())
 }
@@ -234,8 +234,8 @@ fn on_press(state: &Shared, event: Event) {
     else {
         return;
     };
-    // Take the pointer capture so the release arrives here even if the finger
-    // slides off the panel, which is what stops a drag off a control area from
+    // Capture the pointer so the release still arrives here if the finger slides
+    // off the panel, which is what stops a drag off a control area from
     // stranding a pending long press.
     let _ = pointer_capture(&event, index);
     let now = now_ms();
@@ -249,7 +249,7 @@ fn on_press(state: &Shared, event: Event) {
 /// A pointer came up: apply the tap, unless a long press already replaced it.
 fn on_release(state: &Shared, event: Event) {
     // The press belongs to whichever control it started on. Falling back to the
-    // event's own target would be right only when no capture is in effect, and
+    // event's own target is right only when no capture is in effect, and
     // capture is exactly the case that matters.
     let pressed = state.borrow().press;
     let index = pressed
@@ -318,10 +318,10 @@ fn build_player_options(select: &HtmlSelectElement) -> Result<(), JsValue> {
 
 /// Ask the browser to keep the screen awake, and remember the sentinel.
 ///
-/// A refusal is not an error worth reporting: the Wake Lock API is only
-/// available on some browsers, over HTTPS, and in a foreground tab. The
-/// original swallowed it too, and a life counter that cannot keep the screen
-/// on is still a life counter.
+/// A refusal is expected on some browsers, over plain HTTP, and in a background
+/// tab: the Wake Lock API is not universally available and the original
+/// swallowed the failure too. Log it and carry on — a life counter that cannot
+/// keep the screen on is still a life counter.
 fn acquire_wake_lock(state: &Shared) {
     let Some(navigator) = web_sys::window().map(|window| window.navigator()) else {
         return;
@@ -330,9 +330,6 @@ fn acquire_wake_lock(state: &Shared) {
     let handle = state.clone();
     spawn_local(async move {
         let sentinel = wasm_bindgen_futures::JsFuture::from(promise).await;
-        // A refusal is expected on some browsers, over plain HTTP, and in a
-        // background tab. Log it and carry on: a life counter that cannot keep
-        // the screen on is still a life counter.
         match sentinel.map(|value| value.dyn_into::<WakeLockSentinel>()) {
             Ok(Ok(sentinel)) => handle.borrow_mut().wake_lock = Some(sentinel),
             other => {
@@ -367,9 +364,6 @@ fn build_panel(document: &Document, index: usize, game: &GameState) -> Result<El
 
     panel.set_class_name("player-container");
     panel.set_attribute("data-player", &index.to_string())?;
-    // The rotation is the original's, and the reason for it: with two or more
-    // players the bottom half of the board is upside down, so the panel
-    // nearest each player reads correctly for them.
     let rotation = game.rotation(index);
     if rotation != 0 {
         style_of(&panel)?.set_property("transform", &format!("rotate({rotation}deg)"))?;
@@ -403,9 +397,9 @@ fn build_panel(document: &Document, index: usize, game: &GameState) -> Result<El
         panel.append_child(&area)?;
     }
 
-    // The panel's own colour, which the original got from a `bg-*-500` utility
-    // class cycling through nine. Set inline, so nothing in the app has to know
-    // how long that list is.
+    // The panel's own colour, set inline so nothing has to know how long the
+    // list is. The original got it from a `bg-*-500` utility class cycling
+    // through nine.
     style_of(&panel)?.set_property("background-color", game.color(index))?;
 
     Ok(panel)
@@ -635,10 +629,8 @@ fn start() -> Result<(), JsValue> {
         let start_button = element("start-game")?;
         listen(&start_button, "click", move |_| {
             if let Err(error) = start_game(&handle) {
-                // Say what the user can do about it, and nothing else. A raw
-                // `Debug` of the underlying JS error would put implementation
-                // detail and a stack-ish string in front of someone trying to
-                // start a game; the cause is ours to debug, not theirs.
+                // The cause is ours to debug, not the user's: what is shown is
+                // what they can do about it and nothing else.
                 if error
                     .as_string()
                     .is_none_or(|message| message.trim().is_empty())
@@ -700,12 +692,6 @@ fn start() -> Result<(), JsValue> {
 
     register_service_worker();
 
-    // The status line carried "Loading…" until now, so a screen reader was not
-    // left in silence while the app booted. Once it is up it says nothing at
-    // all: there is no progress left to report, and the Start Game button is
-    // right there. An empty `role="status"` element announces nothing, which is
-    // the correct thing to announce.
-    //
     // Nothing the user can see may name the implementation. "Rust is ready"
     // tells them nothing about a life counter and only exists to prove the
     // module booted; the technology is not the user's business.
