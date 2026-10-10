@@ -26,10 +26,10 @@ self.addEventListener('activate', event => {
   })());
 });
 self.addEventListener('fetch', event => {
-  // Deliberately leave unrelated pages, API requests, files and blobs alone.
-  // The directory check is the second half of that rule: a request outside
-  // this app's own directory is never this worker's to answer, whatever the
-  // scope it was registered for says.
+  // The directory check below is the second half of leaving unrelated pages,
+  // API requests, files and blobs alone: a request outside this app's own
+  // directory is never this worker's to answer, whatever the scope it was
+  // registered for says.
   const url = event.request.url;
   if (event.request.method !== 'GET' || !IS_OWN(url) || !ASSETS.includes(url)) return;
   event.respondWith((async () => {

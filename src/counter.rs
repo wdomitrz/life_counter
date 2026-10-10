@@ -3,11 +3,6 @@
 
 //! The rules of the game, with no DOM in sight.
 //!
-//! This is the whole application: a life total per player, a long press that
-//! replaces the tap it would otherwise become, a snackbar that sums recent
-//! changes, a grid layout, and the rotation rule that turns the bottom half of
-//! the board upside down so a table of players can all read their own number.
-//!
 //! Every decision here is a pure function or a small state machine driven by
 //! timestamps, which is what makes the app testable without a browser. The
 //! clock is a parameter rather than a call to [`std::time::Instant`], so a test
@@ -16,17 +11,20 @@
 //! change 2999 ms after the last one joins the running total and one at 3000 ms
 //! starts a new one.
 
-/// Players the counter can track, low and high inclusive.
+/// Lower bound of [`PLAYER_COUNT_OPTIONS`], and what [`parse_player_count`]
+/// clamps to below.
 pub const MIN_PLAYERS: u8 = 1;
-/// Players the counter can track, low and high inclusive.
+/// Upper bound of [`PLAYER_COUNT_OPTIONS`], and what [`parse_player_count`]
+/// clamps to above.
 pub const MAX_PLAYERS: u8 = 12;
 
-/// Starting life the number field accepts.
+/// Starting life [`parse_starting_life`] clamps to below.
 pub const MIN_STARTING_LIFE: i64 = 1;
-/// Starting life the number field accepts.
+/// Starting life [`parse_starting_life`] clamps to above, and the `max` on the
+/// setup screen's number field.
 pub const MAX_STARTING_LIFE: i64 = 9999;
 
-/// The values the setup screen offers, in order.
+/// Players the setup screen offers, in order.
 ///
 /// Kept as a range rather than a hand-written list of twelve options because
 /// the `<option>` elements are generated from it, so the two cannot disagree.
@@ -168,7 +166,7 @@ pub enum Release {
     LongPress,
     /// Released early: the tap has been applied.
     Tap,
-    /// Nothing was held. Nothing changed.
+    /// Nothing was held, so nothing changed.
     Nothing,
 }
 
@@ -177,18 +175,20 @@ pub enum Release {
 enum Press {
     /// Held since `started`, with no long press applied yet.
     Holding {
-        /// Which side of the panel, and therefore the sign.
+        /// Which half of the panel was pressed, and so the sign.
         sign: i64,
         /// When the press began.
         started: i64,
     },
     /// The long press fired and has been applied; releasing adds nothing.
     Fired,
-    /// Nothing is being pressed.
     Idle,
 }
 
 /// One player's running state: their life, and what their snackbar is summing.
+///
+/// Read through [`GameState::snapshot`]; nothing outside this module reaches
+/// into the fields.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Player {
     life: i64,
@@ -203,10 +203,9 @@ struct Snackbar {
     total: i64,
     /// When the last change arrived, or `None` if nothing has changed yet.
     ///
-    /// The original seeded this to `0`, so the very first change of a game —
-    /// at a timestamp far larger — correctly started a new total rather than
-    /// adding to a zero that had never been shown. `None` says the same thing
-    /// without depending on the epoch being smaller than a game.
+    /// The original seeded this to `0`, which also works only because its clock
+    /// epoch is below a game's; `None` states the "no streak yet" case without
+    /// depending on the epoch.
     last: Option<i64>,
     /// When the snackbar should be hidden.
     hide_at: i64,
@@ -281,18 +280,13 @@ impl Player {
     /// End the press at `now`, applying the tap if the long press has not
     /// already replaced it.
     ///
-    /// A long press *replaces* the tap rather than adding to it, so a release
-    /// after the long press has fired changes nothing. The sign is read from
-    /// the state before it is cleared, which is the only place it exists.
-    ///
     /// A release with nothing held applies nothing, rather than the original's
-    /// unconditional ±1. The original had no press state to check — its
+    /// unconditional ±1: the original had no press state to check — its
     /// `mouseup` handler always fired — so a `mouseup` with no `mousedown`, or
-    /// a `touchend` the browser cancelled, moved a player's life by one. With
-    /// a pointer-based input model that stray release is reachable, and a
-    /// player's total has to be something they actually did; so the tap
-    /// requires a press to have started. This is the one place the rewrite
-    /// tightens the original, and it is recorded in `AGENTS.md`.
+    /// a `touchend` the browser cancelled, moved a player's life by one. With a
+    /// pointer-based input model that stray release is reachable, and a player's
+    /// total has to be something they actually did. This is the one place the
+    /// rewrite tightens the original.
     fn release(&mut self, now: i64) -> Release {
         let outcome = match self.press {
             Press::Fired => Release::LongPress,
@@ -317,7 +311,8 @@ impl Player {
 /// One player's life total and snackbar, as the UI reads them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerSnapshot {
-    /// The player's index, which is also their colour slot.
+    /// The index of the player whose snackbar this is, which is also their
+    /// colour slot.
     pub index: usize,
     /// Current life.
     pub life: i64,
@@ -516,7 +511,7 @@ mod tests {
     #[test]
     fn a_long_press_is_ten_and_replaces_the_tap() {
         let mut game = GameState::new(2, 20);
-        // 499 ms is still a tap: one point, nothing more.
+        // 499 ms is a tap; 500 ms is a long press that replaces it.
         let (fired, released) = hold(&mut game, 0, 1, 0, LONG_PRESS - 1);
         assert_eq!(fired, Vec::<usize>::new());
         assert_eq!(released, vec![0]);
@@ -549,7 +544,7 @@ mod tests {
         // Time passing does not keep applying ten every tick.
         assert_eq!(game.tick(LONG_PRESS + 100), Vec::<usize>::new());
         assert_eq!(life(&game, 0), 30);
-        // 10 s on, the snackbar has also timed out, which is a change worth
+        // At 10 s the snackbar has also timed out, which is a change worth
         // redrawing — but still not another ten life.
         assert_eq!(game.tick(10_000), vec![0]);
         assert_eq!(life(&game, 0), 30);
@@ -610,11 +605,7 @@ mod tests {
 
     #[test]
     fn a_release_with_nothing_held_does_nothing() {
-        // The original applied ±1 on every mouseup/touchend with no press state
-        // to check, so a stray release moved a life total. With pointer events
-        // that stray release is reachable, and a player's life has to be
-        // something they actually did, so a release requires a press. The one
-        // behaviour the rewrite tightens; see `release` and `AGENTS.md`.
+        // A release requires a press; see `Player::release` for why.
         let mut game = GameState::new(2, 20);
         assert_eq!(game.release(0, 0), Vec::<usize>::new());
         assert_eq!(life(&game, 0), 20);
@@ -624,7 +615,7 @@ mod tests {
         assert_eq!(tap(&mut game, 0, 1, 100), vec![0]);
         assert_eq!(life(&game, 0), 21);
 
-        // And a second release with nothing held again does nothing.
+        // A second release with nothing held again does nothing.
         assert_eq!(game.release(0, 200), Vec::<usize>::new());
         assert_eq!(life(&game, 0), 21);
     }
@@ -722,8 +713,8 @@ mod tests {
         let mut game = GameState::new(2, 20);
         tap(&mut game, 0, 1, 0);
         tap(&mut game, 0, 1, 2_000);
-        // 2500 ms after the *first* change is 2500, but the second change moved
-        // the deadline to 4500.
+        // 2500 ms after the *first* change, but the second moved the deadline
+        // to 4500.
         assert_eq!(game.tick(2_500), Vec::<usize>::new());
         assert_eq!(game.tick(2_000 + SNACKBAR_HIDE_DELAY_MS), vec![0]);
     }
@@ -733,8 +724,8 @@ mod tests {
         let mut game = GameState::new(3, 20);
         tap(&mut game, 0, 1, 0);
         tap(&mut game, 1, -1, 0);
-        // Player 2's first change is timed so it is still on screen at the
-        // moment players 0 and 1's snackbars time out.
+        // Player 2's first change is timed so it is still on screen when
+        // players 0 and 1's snackbars time out.
         tap(&mut game, 2, 1, SNACKBAR_HIDE_DELAY_MS);
         // Players 0 and 1 became visible at 0 and time out at 2500; player 2
         // became visible at 2500 and does not.

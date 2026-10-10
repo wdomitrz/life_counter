@@ -169,6 +169,18 @@ fn the_shell_is_mountable_anywhere() {
         "the shell has one inline <style> and no external stylesheet"
     );
     assert_eq!(page.matches("<style").count(), 1, "exactly one style block");
+
+    // The manifest must declare no `id`. Chrome resolves a relative id against
+    // start_url's ORIGIN, not the manifest's directory, so the `"./"` this
+    // script once emitted gave every app in the family the same install
+    // identity: Android treats a manifest whose id matches an installed app as
+    // an update of that app, and the second install is swallowed. Left out,
+    // identity falls back to `start_url` -- this app's own mount point.
+    let build = std::fs::read_to_string(root().join("build.rs")).expect("the build script");
+    assert!(
+        !build.contains("\"id\""),
+        "the manifest must not declare an id: \"./\" resolves to the bare origin and collides with every sibling app"
+    );
 }
 
 /// The service worker is a committed template with exactly one placeholder, and
@@ -275,7 +287,7 @@ fn every_precached_file_is_published_into_the_site() {
     // precached, or a cold offline start 404s on it. A hardcoded second list is
     // what let this gap appear in the first place.
     //
-    // This reads the table by splitting on the `SHELL:` declaration, so it must
+    // The table is read by splitting on the `SHELL:` declaration, so it must
     // stay a single line of `("name", source)` pairs.
     let shell_table = build
         .split_once("const SHELL:")
@@ -284,7 +296,6 @@ fn every_precached_file_is_published_into_the_site() {
     let published: Vec<&str> = shell_table
         .split("(\"")
         .skip(1)
-        .take_while(|_| true)
         .filter_map(|entry| entry.split_once('"'))
         .map(|(name, _)| name)
         .take_while(|name| {
@@ -340,13 +351,10 @@ fn no_user_visible_text_names_the_implementation() {
     let mut checked = 0usize;
 
     // The shell, including the loader-failure message its inline script writes.
-    //
-    // That script is a single line that begins with `import(...)` and then
-    // contains the prose a user reads when the app fails to load — which is
-    // exactly when the wording has to be clearest. So the line is still
-    // checked; only the `import('./app.js')` expression itself is exempt, by
-    // trimming it off the front before the scan rather than by skipping the
-    // whole line.
+    // That script is one line that holds both the `import('./app.js')` call and
+    // the prose a user reads when the app fails to load — so the line is
+    // checked, with only the import expression itself trimmed off before the
+    // scan.
     let page = shell();
     for (number, line) in page.lines().enumerate() {
         let prose = match line.find("import(") {
@@ -379,7 +387,6 @@ fn no_user_visible_text_names_the_implementation() {
             continue;
         }
         let lower = line.to_lowercase();
-        // Only string literals can reach the DOM, so only they are checked.
         let mut rest = line;
         while let Some(start) = rest.find('"') {
             rest = &rest[start + 1..];
@@ -923,31 +930,23 @@ fn only_master_can_reach_the_live_site() {
         "the `deploy` job must be gated on the build being for master"
     );
 
-    // ... and it must ALSO be gated on not being a fork. This file is
+    // And it must ALSO be gated on not being a fork. This file is
     // byte-identical in `wdomitrz/life_counter` and in its fork
     // `bot-git-ai/life_counter`, so a gate that tests only the branch name
     // cannot tell the two repositories apart: both have a `master`, and a push
-    // to the fork's master would try to publish. Two things then go wrong, and
-    // the first is the one that happens. A fork has no Pages site of its own
-    // until someone enables one by hand, so every push to fork master dies
-    // with "Creating Pages deployment failed ... Ensure GitHub Pages has been
-    // enabled". And if Pages were enabled there, the fork would serve its own
-    // copy, which drifts from the published site as soon as the two masters
-    // diverge.
+    // to the fork's master would try to publish.
     //
     // `github.event.repository.fork` is the discriminator because it needs no
     // configuration: the event supplies it, false upstream and true in the
-    // fork. The obvious alternative, a repository Actions variable, has the
-    // failure mode this assertion exists to prevent -- it would have to be set
-    // on the *upstream* repository to publish, and no account but the user's can
-    // do that, so the gate would ship silently off on the one repository where
-    // it matters.
+    // fork. The obvious alternative, a repository Actions variable, would have
+    // to be set on the *upstream* repository to publish, and no account but the
+    // user's can do that — so the gate would ship silently off on the one
+    // repository where it matters.
     //
     // Read out of the comment-stripped text, or the comment block above the
-    // `if:` -- which names both halves of the gate while explaining it --
-    // would satisfy this on its own. That is not hypothetical: it is the
-    // mistake the `RUSTFLAGS` assertion in this same file was shipped with, and
-    // it shipped.
+    // `if:` — which names both halves of the gate while explaining it — would
+    // satisfy this on its own. That is not hypothetical: it is the mistake the
+    // `RUSTFLAGS` assertion in this same file shipped with, and it shipped.
     let live = strip_yaml_comments(&pages);
     let live_gate = live
         .split("\n  deploy:")
@@ -1231,8 +1230,7 @@ fn every_run_block_in_the_workflow_is_valid_bash() {
                 body.push(next.get(indent..).unwrap_or("").to_owned());
                 lines.next();
             }
-            // Trailing blank lines are an artefact of the block scalar, not
-            // content.
+            // Trailing blank lines are a block-scalar artefact, not content.
             while body.last().is_some_and(|line| line.trim().is_empty()) {
                 body.pop();
             }
