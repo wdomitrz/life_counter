@@ -153,6 +153,14 @@ fn rasterize(root: &Path, size: u32) -> Vec<u8> {
 ///
 /// Building it here means the icon list is exactly the set of PNGs this script
 /// rasterized: a committed manifest can name a file the build no longer makes.
+///
+/// The manifest declares no `id`. Chrome resolves a relative id against
+/// `start_url`'s *origin*, not the manifest's directory, so the `"./"` this
+/// function once emitted gave every app in the family the same install
+/// identity — and Android treats a manifest whose id matches an installed app
+/// as an update of that app, swallowing the second install. Left out, identity
+/// falls back to `start_url`, which resolves against the manifest URL and is
+/// unique per app.
 fn manifest() -> String {
     let (name, short_name, background_color, theme_color) = MANIFEST;
     let mut icons = String::new();
@@ -169,7 +177,7 @@ fn manifest() -> String {
     let _ = write!(
         out,
         concat!(
-            r#"{{"id":"./","name":"{}","short_name":"{}","start_url":"./","scope":"./","#,
+            r#"{{"name":"{}","short_name":"{}","start_url":"./","scope":"./","#,
             r#""display":"standalone","background_color":"{}","theme_color":"{}","#,
             r#""icons":[{}]}}"#
         ),

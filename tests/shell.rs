@@ -169,6 +169,18 @@ fn the_shell_is_mountable_anywhere() {
         "the shell has one inline <style> and no external stylesheet"
     );
     assert_eq!(page.matches("<style").count(), 1, "exactly one style block");
+
+    // The manifest must declare no `id`. Chrome resolves a relative id against
+    // start_url's ORIGIN, not the manifest's directory, so the `"./"` this
+    // script once emitted gave every app in the family the same install
+    // identity: Android treats a manifest whose id matches an installed app as
+    // an update of that app, and the second install is swallowed. Left out,
+    // identity falls back to `start_url` -- this app's own mount point.
+    let build = std::fs::read_to_string(root().join("build.rs")).expect("the build script");
+    assert!(
+        !build.contains("\"id\""),
+        "the manifest must not declare an id: \"./\" resolves to the bare origin and collides with every sibling app"
+    );
 }
 
 /// The service worker is a committed template with exactly one placeholder, and
