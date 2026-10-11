@@ -128,10 +128,10 @@ tested directly and the whole thing runs on the host with no web-sys.
 
 `tests/shell.rs` asserts the invariants of the committed sources: that the page
 loads generated bindings rather than a hand-written ABI, that every URL is
-relative, that the service worker carries exactly one `__VERSION__` and no
-`skipWaiting`, that no build artefact is tracked, that the original JavaScript
-app is gone from the tree, and that `assets/icon.svg` is still the author's
-original.
+relative, that the service worker carries exactly one `__VERSION__` and a
+`skipWaiting` that answers only the page's `SKIP_WAITING` message, that no
+build artefact is tracked, that the original JavaScript app is gone from the
+tree, and that `assets/icon.svg` is still the author's original.
 
 ## Code map
 
@@ -144,6 +144,10 @@ original.
 - `ui.html`: the static shell. Structure, one inline `<style>`, and the ~6-line
   module script that dynamically imports the bindings.
 - `service-worker.js`: cache lifecycle only, `__VERSION__` substituted at build
-  time, no `skipWaiting`.
+  time, and a `skipWaiting` that answers only the page's `SKIP_WAITING`
+  message. The page asks (`ui.rs`'s `nudge_worker_update`) and reloads on
+  `controllerchange`: an installed copy updates on its next open, no update
+  waits for a visit that never comes, and no page is ever swapped under
+  without having asked.
 - `build.rs`: writes the six files it owns into `dist/`, rasterizing the icon
   and assembling the manifest.

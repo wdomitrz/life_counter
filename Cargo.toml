@@ -29,14 +29,17 @@ js-sys = "0.3.105"
 # `WakeLockType` is required alongside `WakeLock`/`WakeLockSentinel`: `request()`
 # takes a `WakeLockType` argument, and `VisibilityState` is what
 # `Document::visibility_state` returns. `PointerEvent` is the one pointer event
-# type used, and `DomTokenList` backs `Element::class_list`.
+# type used, and `DomTokenList` backs `Element::class_list`. `ServiceWorkerState`
+# is how an installed-and-waiting worker is recognised before the page asks it
+# in.
 web-sys = { version = "0.3.105", features = [
   "Window", "Document", "Element", "Node", "EventTarget", "Event", "PointerEvent",
   "DomTokenList", "CssStyleDeclaration",
   "HtmlElement", "HtmlSelectElement", "HtmlButtonElement", "HtmlInputElement",
   "Navigator", "WakeLock", "WakeLockSentinel", "WakeLockType",
   "ServiceWorkerContainer", "ServiceWorkerRegistration",
-  "ServiceWorker", "RegistrationOptions", "Location", "Url",
+  "ServiceWorker", "ServiceWorkerState", "RegistrationOptions", "Location",
+  "Url",
   "Performance", "VisibilityState", "console"
 ] }
 

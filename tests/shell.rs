@@ -54,8 +54,7 @@ fn tracked_files() -> Option<String> {
         .args(["rev-parse", "--git-dir"])
         .current_dir(&root)
         .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false);
+        .is_ok_and(|output| output.status.success());
     if !inside {
         return None;
     }
@@ -186,10 +185,10 @@ fn the_shell_is_mountable_anywhere() {
 /// The service worker is a committed template with exactly one placeholder, and
 /// `build.rs` substitutes it. A template with no placeholder would mean the
 /// cache never invalidates; a second one would mean the substitution is not the
-/// only edit. And there is no `skipWaiting`: an update must not swap the wasm
-/// under a live tab.
+/// only edit. And the only `skipWaiting` is the worker's answer to the page's
+/// ask: an update must not swap the wasm under a live tab unasked.
 #[test]
-fn the_service_worker_template_has_exactly_one_placeholder_and_no_skip_waiting() {
+fn the_service_worker_template_has_exactly_one_placeholder_and_a_gated_skip_waiting() {
     let worker = std::fs::read_to_string(root().join("src/service-worker.js"))
         .expect("the committed template");
     assert_eq!(
@@ -201,15 +200,29 @@ fn the_service_worker_template_has_exactly_one_placeholder_and_no_skip_waiting()
         worker.contains("new URL('./', self.location.href)"),
         "the worker must resolve its cache from its own location"
     );
-    // Catches a call, not the comment explaining why there is not one.
-    let calls: Vec<&str> = worker
+    // The call must sit inside the message handler, gated on the message, so
+    // an unprompted or unconditional call cannot creep back in.
+    let handler = worker
+        .split("addEventListener('message'")
+        .nth(1)
+        .expect("the worker must listen for the page's handover message");
+    let handler = &handler[..handler.find("});").expect("the message handler closes")];
+    assert!(
+        handler.contains("event.data === 'SKIP_WAITING'") && handler.contains("skipWaiting()"),
+        "skipWaiting must be the worker's answer to the page's ask, never a call \
+         it makes on its own"
+    );
+    let outside: Vec<&str> = worker
+        .split("addEventListener('message'")
+        .next()
+        .expect("the prefix before the handler")
         .lines()
         .filter(|line| !line.trim_start().starts_with("//"))
         .filter(|line| line.contains("skipWaiting"))
         .collect();
     assert!(
-        calls.is_empty(),
-        "no skipWaiting: an update must not swap the wasm under a live tab, but found {calls:?}"
+        outside.is_empty(),
+        "no skipWaiting outside the message handler, but found {outside:?}"
     );
     for file in ["app.js", "app_bg.wasm", "icon.svg", "index.html"] {
         assert!(
@@ -236,6 +249,31 @@ fn the_service_worker_template_has_exactly_one_placeholder_and_no_skip_waiting()
 /// that once made every install in this family claim the same identity. It
 /// still sits in `ASSETS`, so a manifest that 404s fails the install loudly;
 /// it just always reaches the network.
+/// The page asks a newly installed worker in, and reloads as it takes over.
+///
+/// Without the ask, an installed copy only ever moves to a new version when
+/// every opening of it has closed — on a phone, possibly never. This pins
+/// both halves: the page's message, which the worker answers with
+/// `skipWaiting`, and the page's own reload on `controllerchange`.
+#[test]
+fn the_page_takes_an_installed_worker_over_with_a_reload() {
+    let ui = std::fs::read_to_string(root().join("src/ui.rs")).expect("src/ui.rs");
+    assert!(
+        ui.contains("registration.waiting()") && ui.contains(".installing()"),
+        "the page must look at both workers an update can leave behind: one already \
+         installed and waiting, and one discovered while the page stands"
+    );
+    assert!(
+        ui.contains("post_message(&JsValue::from_str(\"SKIP_WAITING\"))"),
+        "the handover starts with the page's message; the worker never swaps \
+         itself in unasked"
+    );
+    assert!(
+        ui.contains("controllerchange") && ui.contains("location().reload()"),
+        "and ends with the page reloading exactly as the worker takes over"
+    );
+}
+
 #[test]
 fn the_worker_never_serves_the_manifest_from_the_cache() {
     let worker = std::fs::read_to_string(root().join("src/service-worker.js"))
@@ -257,6 +295,7 @@ fn the_worker_never_serves_the_manifest_from_the_cache() {
 
 #[test]
 fn every_precached_file_is_published_into_the_site() {
+    const WASM_STEP: [&str; 2] = ["app.js", "app_bg.wasm"];
     let worker = std::fs::read_to_string(root().join("src/service-worker.js"))
         .expect("the committed template");
     let list = worker
@@ -282,7 +321,6 @@ fn every_precached_file_is_published_into_the_site() {
     // `dist/`. Most come from `build.rs`; `app.js` and `app_bg.wasm` come from
     // the `wasm-bindgen` step, which owns exactly those two and which
     // `build.rs` deliberately does not touch.
-    const WASM_STEP: [&str; 2] = ["app.js", "app_bg.wasm"];
     let build = std::fs::read_to_string(root().join("build.rs")).expect("the build script");
     for asset in &assets {
         let name = asset.trim_start_matches("./");
@@ -296,7 +334,7 @@ fn every_precached_file_is_published_into_the_site() {
         // and the worker is written under its own name.
         let published = build.contains(&format!("\"{name}\""))
             || (name.starts_with("icon-")
-                && name.ends_with(".png")
+                && name.to_ascii_lowercase().ends_with(".png")
                 && build.contains("ICON_SIZES"))
             || (name == "service-worker.js" && build.contains("service-worker.js"));
         assert!(
@@ -386,7 +424,7 @@ fn no_user_visible_text_names_the_implementation() {
         let prose = match line.find("import(") {
             Some(index) => {
                 let start = line[index..]
-                    .find(")")
+                    .find(')')
                     .map_or(line.len(), |end| index + end + 1);
                 format!("{}{}", &line[..index], &line[start..])
             }
