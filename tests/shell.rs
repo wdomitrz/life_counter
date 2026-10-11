@@ -229,6 +229,32 @@ fn the_service_worker_template_has_exactly_one_placeholder_and_no_skip_waiting()
 /// itself looks perfect and nothing in the build output says so. That is not
 /// hypothetical: a sibling repo shipped a seven-file `dist/` whose page and
 /// worker both referred to an eighth, unpublished `icon.svg`.
+/// The manifest is what the browser reads to decide what an install *is*, so
+/// it is the one precached URL the worker must never answer from the cache: a
+/// cached copy would let a fresh install re-derive the app's identity from a
+/// manifest older than the last change to it — the exact shape of the bug
+/// that once made every install in this family claim the same identity. It
+/// still sits in `ASSETS`, so a manifest that 404s fails the install loudly;
+/// it just always reaches the network.
+#[test]
+fn the_worker_never_serves_the_manifest_from_the_cache() {
+    let worker = std::fs::read_to_string(root().join("src/service-worker.js"))
+        .expect("the committed template");
+    assert!(
+        worker.contains("'manifest.webmanifest'"),
+        "the manifest must stay in ASSETS: a broken manifest must fail the install loudly"
+    );
+    let fetch = worker
+        .split_once("addEventListener('fetch'")
+        .expect("the worker must handle fetch")
+        .1;
+    assert!(
+        fetch.contains("url === MANIFEST"),
+        "the fetch handler must exempt the manifest before ever touching the cache; \
+         a cached manifest lets an install re-derive a stale identity"
+    );
+}
+
 #[test]
 fn every_precached_file_is_published_into_the_site() {
     let worker = std::fs::read_to_string(root().join("src/service-worker.js"))

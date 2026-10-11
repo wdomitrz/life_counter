@@ -80,6 +80,14 @@ so this supplies `"Life"`. It declared no theme or background colour either, so
 both are taken from the original page's dark gray body: `theme_color` `#111827`
 and `background_color` `#1f2937`.
 
+For the same reason the worker **never serves the manifest from its cache**.
+The manifest decides what an install *is*; a cached copy would let a fresh
+install read a manifest older than the last change to it and re-derive a stale
+identity — and the origin's Cache Storage survives an uninstall/reinstall, so
+the stale copy would outlive the app it came from. The manifest stays in the
+worker's precache list so a broken one still fails the install loudly, but its
+fetch handler passes it to the network unconditionally.
+
 ## Behaviour
 
 - **Setup**: 1–12 players (default 2) and a starting life (default 20).
