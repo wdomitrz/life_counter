@@ -5,9 +5,10 @@
 //!
 //! Everything the app decides — the life arithmetic, the long-press state
 //! machine, the change snackbar's running total, the grid layout and which
-//! panels are upside down — lives in [`counter`], which knows nothing about the
-//! DOM and is unit-tested on the host. [`ui`] is the thin layer that draws it
-//! and turns pointer and visibility events into calls on it.
+//! panels are upside down — lives in the private `counter` module, which knows
+//! nothing about the DOM and is unit-tested on the host. The private `ui`
+//! module is the thin layer that draws it and turns pointer and visibility
+//! events into calls on it.
 //!
 //! The app is a static PWA. There is no server, no binary and no run step:
 //! `cargo build` writes `dist/`, and that directory is the publishable site.
