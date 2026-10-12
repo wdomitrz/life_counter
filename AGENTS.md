@@ -44,11 +44,10 @@ it, serve the directory (`python3 -m http.server`) and open it.
 exactly; a mismatched generator produces bindings the runtime will not load,
 and the page then fails to start with "Life Counter could not start".
 
-**`dist/` is where a stale service worker bites.** The app registers one, and
-`caches.addAll` fails if any listed URL 404s — so a missing file in `dist/`
-costs you the whole service worker and every bit of offline support, with
-nothing in the build output pointing at it. If the app behaves like an old
-build after you change something, unregister it before debugging your Rust:
+The app registers a service worker; why one missing file in `dist/` costs the
+whole thing is told where it is enforced, in `tests/shell.rs`. If the app
+behaves like an old build after you change something, unregister it before
+debugging your Rust:
 
 ```js
 navigator.serviceWorker.getRegistrations().then(rs => Promise.all(rs.map(r => r.unregister())))
@@ -74,11 +73,9 @@ committed byte for byte, and it is the **source of truth**: `build.rs`
 rasterizes the install PNGs from it and `tests/shell.rs` pins its size and
 contents. The PNGs are build output and exist only in `dist/`.
 
-The manifest keeps the original's `name` ("Life Counter") and `display`
-(`standalone`). The original had no `short_name` — it was removed deliberately —
-so this supplies `"Life"`. It declared no theme or background colour either, so
-both are taken from the original page's dark gray body: `theme_color` `#111827`
-and `background_color` `#1f2937`.
+The manifest keeps the original's `name` and `display`, invents the `short_name`
+the original deliberately removed, and takes its colours from the original
+page — the full provenance is on the manifest constants in `build.rs`.
 
 ## Behaviour
 
@@ -113,17 +110,9 @@ cargo clippy --locked --lib --target wasm32-unknown-unknown -- -D warnings
 ```
 
 There are no browser tests and no Node. `src/counter.rs` holds the entire
-domain — the life arithmetic, the long-press state machine, the snackbar's
-running total, the layout and the rotation rule — as pure functions over an
-explicit clock, so the boundaries (499 ms vs 500 ms, 2999 ms vs 3000 ms) are
-tested directly and the whole thing runs on the host with no web-sys.
-
-`tests/shell.rs` asserts the invariants of the committed sources: that the page
-loads generated bindings rather than a hand-written ABI, that every URL is
-relative, that the service worker carries exactly one `__VERSION__` and no
-`skipWaiting`, that no build artefact is tracked, that the original JavaScript
-app is gone from the tree, and that `assets/icon.svg` is still the author's
-original.
+domain as pure functions over an explicit clock, so it runs — and is tested at
+its boundaries — on the host. `tests/shell.rs` is the executable specification
+of the committed sources; read it.
 
 ## Code map
 

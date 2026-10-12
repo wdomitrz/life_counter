@@ -1,6 +1,3 @@
-// Copyright (c) 2026 Witalis Domitrz <witekdomitrz@gmail.com>
-// AGPL License
-
 //! The rules of the game, with no DOM in sight.
 //!
 //! Every decision here is a pure function or a small state machine driven by
@@ -71,9 +68,7 @@ pub const COLORS: [&str; 9] = [
 /// to CSS: what matters here is how many columns and how many rows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlayerLayout {
-    /// Number of grid columns.
     pub columns: usize,
-    /// Number of grid rows.
     pub rows: usize,
 }
 
@@ -83,6 +78,7 @@ pub struct PlayerLayout {
 /// by `player_count / 2` rows for four or more. Two players is the two-column
 /// case's degenerate sibling — one row — but the original drew it as two stacked
 /// panels, so it stays on the one-column rule.
+#[must_use]
 pub fn layout(player_count: u8) -> PlayerLayout {
     debug_assert!((MIN_PLAYERS..=MAX_PLAYERS).contains(&player_count));
     if player_count <= 3 {
@@ -109,6 +105,7 @@ pub fn layout(player_count: u8) -> PlayerLayout {
 /// A single player is never rotated — one person is sitting where they started
 /// it — and `index` is taken modulo the count so the rule answers for any
 /// index at all rather than trusting the caller.
+#[must_use]
 pub fn rotation_for(index: usize, player_count: u8) -> u16 {
     if player_count >= 2 && 2 * (index % player_count as usize) < player_count as usize {
         180
@@ -128,11 +125,21 @@ pub fn color_for(index: usize) -> &'static str {
 /// [`PLAYER_COUNT_OPTIONS`], so anything else can only come from a tampered
 /// DOM; clamping keeps one bad value from taking the whole board down, and
 /// every count in range is a legitimate one, so there is nothing to reject.
+#[must_use]
 pub fn parse_player_count(raw: &str) -> u8 {
-    raw.trim()
-        .parse::<i64>()
-        .unwrap_or(MIN_PLAYERS as i64)
-        .clamp(MIN_PLAYERS as i64, MAX_PLAYERS as i64) as u8
+    // Exact by construction: the clamp bounds the value to
+    // `MIN_PLAYERS..=MAX_PLAYERS` before the cast, so it always fits a `u8`.
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "value is clamped into u8 range first"
+    )]
+    {
+        raw.trim()
+            .parse::<i64>()
+            .unwrap_or(i64::from(MIN_PLAYERS))
+            .clamp(i64::from(MIN_PLAYERS), i64::from(MAX_PLAYERS)) as u8
+    }
 }
 
 /// Read the starting life out of the setup form.
@@ -140,6 +147,7 @@ pub fn parse_player_count(raw: &str) -> u8 {
 /// Anything unparseable or out of range falls back to the default the original
 /// pre-filled the field with, so an empty or absurd number still starts a game
 /// rather than refusing to.
+#[must_use]
 pub fn parse_starting_life(raw: &str) -> i64 {
     let default = 20;
     let value = raw.trim().parse::<i64>().unwrap_or(default);
@@ -150,6 +158,7 @@ pub fn parse_starting_life(raw: &str) -> i64 {
 ///
 /// The original built this by string concatenation, and the commit "fix 0 total
 /// change bug" is why a total that lands back on zero reads `0` and not `+0`.
+#[must_use]
 pub fn snackbar_label(total: i64) -> String {
     if total > 0 {
         format!("+{total}")
@@ -199,7 +208,6 @@ pub struct Player {
 /// The snackbar's running total for one player.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Snackbar {
-    /// Sum of the changes that have fallen inside the current window.
     total: i64,
     /// When the last change arrived, or `None` if nothing has changed yet.
     ///
@@ -207,9 +215,7 @@ struct Snackbar {
     /// epoch is below a game's; `None` states the "no streak yet" case without
     /// depending on the epoch.
     last: Option<i64>,
-    /// When the snackbar should be hidden.
     hide_at: i64,
-    /// Whether it is on screen.
     shown: bool,
 }
 
@@ -314,9 +320,7 @@ pub struct PlayerSnapshot {
     /// The index of the player whose snackbar this is, which is also their
     /// colour slot.
     pub index: usize,
-    /// Current life.
     pub life: i64,
-    /// The snackbar text, or `None` if it is not currently on screen.
     pub snackbar: Option<String>,
 }
 
@@ -334,6 +338,7 @@ impl GameState {
     /// A count of zero would build a grid with no rows and a division by zero
     /// in [`layout`], so it is raised to one player: the smallest game there
     /// is, rather than no game at all.
+    #[must_use]
     pub fn new(player_count: u8, starting_life: i64) -> Self {
         let player_count = player_count.clamp(MIN_PLAYERS, MAX_PLAYERS);
         Self {
@@ -346,6 +351,7 @@ impl GameState {
     }
 
     /// A board built from the setup form's raw field values.
+    #[must_use]
     pub fn from_form(player_count: &str, starting_life: &str) -> Self {
         Self::new(
             parse_player_count(player_count),
@@ -353,32 +359,33 @@ impl GameState {
         )
     }
 
-    /// The number of players.
+    #[must_use]
     pub fn player_count(&self) -> u8 {
         self.player_count
     }
 
-    /// The life everyone started on.
+    #[must_use]
     pub fn starting_life(&self) -> i64 {
         self.starting_life
     }
 
-    /// The grid this board is laid out on.
+    #[must_use]
     pub fn layout(&self) -> PlayerLayout {
         layout(self.player_count)
     }
 
-    /// Whether player `index` is drawn upside down.
+    #[must_use]
     pub fn rotation(&self, index: usize) -> u16 {
         rotation_for(index, self.player_count)
     }
 
-    /// Player `index`'s panel colour.
+    #[must_use]
     pub fn color(&self, index: usize) -> &'static str {
         color_for(index)
     }
 
     /// Everything the UI needs to draw one player.
+    #[must_use]
     pub fn snapshot(&self, index: usize) -> Option<PlayerSnapshot> {
         self.players.get(index).map(|player| PlayerSnapshot {
             index,
@@ -392,6 +399,15 @@ impl GameState {
     }
 
     /// Every player, in grid order.
+    ///
+    /// # Panics
+    ///
+    /// Panics only if the internal invariant behind `snapshot` breaks — that
+    /// every index below `players.len()` is in range — which cannot happen
+    /// here, because the indices are exactly `0..players.len()` by
+    /// construction. The `expect` states the invariant rather than inventing
+    /// a silent fallback that would shrink the grid on a broken invariant.
+    #[must_use]
     pub fn snapshots(&self) -> Vec<PlayerSnapshot> {
         (0..self.players.len())
             .map(|index| self.snapshot(index).expect("index is in range"))

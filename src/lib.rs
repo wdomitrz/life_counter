@@ -1,6 +1,3 @@
-// Copyright (c) 2026 Witalis Domitrz <witekdomitrz@gmail.com>
-// AGPL License
-
 //! Life Counter, a 1–12 player life tracker for tabletop games.
 //!
 //! Everything the app decides — the life arithmetic, the long-press state

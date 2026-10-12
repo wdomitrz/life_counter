@@ -1,6 +1,3 @@
-// Copyright (c) 2026 Witalis Domitrz <witekdomitrz@gmail.com>
-// AGPL License
-
 //! The browser application: draw the board, and turn pointers into calls on
 //! [`crate::counter`].
 //!
@@ -63,7 +60,6 @@ struct App {
     press: Option<(usize, i64)>,
 }
 
-/// Show `message` on the setup screen's error line.
 fn document() -> Result<Document, JsValue> {
     web_sys::window()
         .and_then(|window| window.document())

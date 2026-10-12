@@ -1,6 +1,3 @@
-// Copyright (c) 2026 Witalis Domitrz <witekdomitrz@gmail.com>
-// AGPL License
-
 //! Write the static app shell to `dist/` while the crate compiles.
 //!
 //! Life Counter is a browser application, so publishing it is a file copy, not a
@@ -137,7 +134,13 @@ fn rasterize(root: &Path, size: u32) -> Vec<u8> {
     let mut pixmap = tiny_skia::Pixmap::new(size, size)
         .unwrap_or_else(|| panic!("a {size}x{size} canvas is not representable"));
     // f32, not f64: `Transform::from_scale` is f32, and `resvg` 0.48 has no f64
-    // overload to fall back on.
+    // overload to fall back on. Both casts are exact by construction: the icon
+    // sizes (192, 512) and the SVG's pixel dimensions are small integers, all
+    // exactly representable in an `f32`.
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "icon sizes and dims are exact in f32"
+    )]
     let scale = size as f32 / tree.size().width() as f32;
     resvg::render(
         &tree,

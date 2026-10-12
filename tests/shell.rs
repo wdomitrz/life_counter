@@ -1,6 +1,3 @@
-// Copyright (c) 2026 Witalis Domitrz <witekdomitrz@gmail.com>
-// AGPL License
-
 //! Invariants of the committed sources, and of what is and is not committed.
 //!
 //! Everything here reads committed files. `dist/` is build output and is
@@ -54,8 +51,7 @@ fn tracked_files() -> Option<String> {
         .args(["rev-parse", "--git-dir"])
         .current_dir(&root)
         .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false);
+        .is_ok_and(|output| output.status.success());
     if !inside {
         return None;
     }
@@ -219,6 +215,7 @@ fn the_service_worker_template_has_exactly_one_placeholder_and_no_skip_waiting()
 /// worker both referred to an eighth, unpublished `icon.svg`.
 #[test]
 fn every_precached_file_is_published_into_the_site() {
+    const WASM_STEP: [&str; 2] = ["app.js", "app_bg.wasm"];
     let worker = std::fs::read_to_string(root().join("src/service-worker.js"))
         .expect("the committed template");
     let list = worker
@@ -244,7 +241,8 @@ fn every_precached_file_is_published_into_the_site() {
     // `dist/`. Most come from `build.rs`; `app.js` and `app_bg.wasm` come from
     // the `wasm-bindgen` step, which owns exactly those two and which
     // `build.rs` deliberately does not touch.
-    const WASM_STEP: [&str; 2] = ["app.js", "app_bg.wasm"];
+    // The icon PNGs are rasterized from a size rather than named in `SHELL`,
+    // and the worker is written under its own name.
     let build = std::fs::read_to_string(root().join("build.rs")).expect("the build script");
     for asset in &assets {
         let name = asset.trim_start_matches("./");
@@ -256,6 +254,14 @@ fn every_precached_file_is_published_into_the_site() {
         }
         // The icon PNGs are rasterized from a size rather than named in `SHELL`,
         // and the worker is written under its own name.
+        // Case-sensitive on purpose: the names compared here are written by
+        // this crate's own build, always lowercase, and a laxer comparison
+        // would silently accept a manifest the browser would treat as
+        // different files.
+        #[allow(
+            clippy::case_sensitive_file_extension_comparisons,
+            reason = "build-written names are known lowercase by construction"
+        )]
         let published = build.contains(&format!("\"{name}\""))
             || (name.starts_with("icon-")
                 && name.ends_with(".png")
@@ -348,7 +354,7 @@ fn no_user_visible_text_names_the_implementation() {
         let prose = match line.find("import(") {
             Some(index) => {
                 let start = line[index..]
-                    .find(")")
+                    .find(')')
                     .map_or(line.len(), |end| index + end + 1);
                 format!("{}{}", &line[..index], &line[start..])
             }
