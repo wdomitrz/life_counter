@@ -93,10 +93,17 @@ fn show_error(message: &str) {
 /// It starts near zero on every load, so the first change of a game is always a
 /// new streak rather than a continuation of one.
 fn now_ms() -> i64 {
-    web_sys::window()
+    // `performance.now()` is f64 milliseconds; truncating toward zero folds
+    // away a sub-millisecond remainder, which is finer than anything here
+    // can observe.
+    let now = web_sys::window()
         .and_then(|window| window.performance())
-        .map(|performance| performance.now())
-        .unwrap_or_default() as i64
+        .map_or(0.0, |performance| performance.now());
+    // Truncating toward zero folds away a sub-millisecond remainder, which is
+    // finer than anything here can observe.
+    #[allow(clippy::cast_possible_truncation)]
+    let stamped = now as i64;
+    stamped
 }
 
 /// Attach a listener that is never removed, because there are a fixed number of
@@ -104,9 +111,9 @@ fn now_ms() -> i64 {
 fn listen(
     target: &Element,
     event: &str,
-    handler: impl FnMut(Event) + 'static,
+    handler: impl FnMut(&Event) + 'static,
 ) -> Result<(), JsValue> {
-    let callback = Closure::<dyn FnMut(Event)>::new(handler);
+    let callback = Closure::<dyn FnMut(&Event)>::new(handler);
     target.add_event_listener_with_callback(event, callback.as_ref().unchecked_ref())?;
     callback.forget();
     Ok(())
@@ -130,9 +137,12 @@ fn start_ticker(state: &Shared) {
     let Some(window) = web_sys::window() else {
         return;
     };
+    // TICK_MS is 16, far inside an i32; the cast is exact.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let tick_ms = TICK_MS as i32;
     let Ok(tick_id) = window.set_interval_with_callback_and_timeout_and_arguments_0(
         callback.as_ref().unchecked_ref(),
-        TICK_MS as i32,
+        tick_ms,
     ) else {
         return;
     };
@@ -229,7 +239,7 @@ fn sign_at(target: Option<EventTarget>) -> Option<i64> {
 
 /// A pointer went down on a control area: start a press, so a long press can
 /// mature under the finger.
-fn on_press(state: &Shared, event: Event) {
+fn on_press(state: &Shared, event: &Event) {
     let (Some(index), Some(sign)) = (player_index_at(event.target()), sign_at(event.target()))
     else {
         return;
@@ -237,7 +247,7 @@ fn on_press(state: &Shared, event: Event) {
     // Capture the pointer so the release still arrives here if the finger slides
     // off the panel, which is what stops a drag off a control area from
     // stranding a pending long press.
-    let _ = pointer_capture(&event, index);
+    let _ = pointer_capture(event, index);
     let now = now_ms();
     let mut app = state.borrow_mut();
     app.press = Some((index, sign));
@@ -247,7 +257,7 @@ fn on_press(state: &Shared, event: Event) {
 }
 
 /// A pointer came up: apply the tap, unless a long press already replaced it.
-fn on_release(state: &Shared, event: Event) {
+fn on_release(state: &Shared, event: &Event) {
     // The press belongs to whichever control it started on. Falling back to the
     // event's own target is right only when no capture is in effect, and
     // capture is exactly the case that matters.
@@ -274,7 +284,7 @@ fn on_release(state: &Shared, event: Event) {
 
 /// The browser cancelled the pointer, or the finger left the control area: drop
 /// the pending press without applying anything.
-fn on_cancel(state: &Shared, _event: Event) {
+fn on_cancel(state: &Shared, _event: &Event) {
     let pressed = state.borrow().press;
     let Some(index) = pressed.map(|(index, _)| index) else {
         return;
@@ -330,7 +340,7 @@ fn acquire_wake_lock(state: &Shared) {
     let handle = state.clone();
     spawn_local(async move {
         let sentinel = wasm_bindgen_futures::JsFuture::from(promise).await;
-        match sentinel.map(|value| value.dyn_into::<WakeLockSentinel>()) {
+        match sentinel.map(wasm_bindgen::JsCast::dyn_into::<WakeLockSentinel>) {
             Ok(Ok(sentinel)) => handle.borrow_mut().wake_lock = Some(sentinel),
             other => {
                 web_sys::console::warn_1(&JsValue::from_str("screen wake lock unavailable"));
@@ -502,10 +512,157 @@ fn register_service_worker() {
         .register_with_options("./service-worker.js", &options);
     spawn_local(async move {
         // Awaited, but only so the cleanup below is sequenced after the
-        // registration this app's own worker made; nothing waits on it.
-        let _ = JsFuture::from(promise).await;
+        // registration this app's own worker made; nothing waits on it. The
+        // promise resolves to the registration, which is the handle the
+        // update nudge watches.
+        if let Ok(Ok(registered)) = JsFuture::from(promise)
+            .await
+            .map(JsCast::dyn_into::<web_sys::ServiceWorkerRegistration>)
+        {
+            nudge_worker_update(&registered).await;
+        }
         release_stale(&window).await;
     });
+}
+
+/// Ask this app's service worker to update as soon as it can take over.
+///
+/// The worker never swaps itself in unasked: an update waits for every page
+/// it controls to close, because a count mid-game must not run half old code
+/// under half new. Left exactly there, an installed copy would update only
+/// when every opening of it has closed — on a phone, possibly never. So this
+/// asks, and the ask is safe by construction: the sender is the page itself,
+/// which then reloads as the swap happens. The worker answers the message
+/// with `skipWaiting`, the browser fires `controllerchange`, the page reloads
+/// exactly once, and the old worker is redundant. No client ever straddles
+/// the two versions — the one that asked is the one that stepped aside.
+///
+/// The message is sent for a worker already installed and waiting, and for
+/// one still installing — sent on `installed` in the second case, after a
+/// `statechange` wait — and a `controllerchange` arriving with no reload of
+/// ours in flight is answered by one reload, so a version swap is never
+/// better than one reload away, whatever path it came in on.
+///
+/// Best effort like everything around it: a failure is a console line, and a
+/// counter that stays on this version still counts.
+async fn nudge_worker_update(registration: &web_sys::ServiceWorkerRegistration) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+
+    // The reload that follows a swap. The flag keeps it one-per-swap, so a
+    // late `updatefound` from the same registration cannot reload again
+    // underneath it.
+    watch_for_controller_change(&window);
+
+    // A worker installed and waiting for pages like this one to close. This
+    // is the state an update is left in when a visit ended before its
+    // handover: nothing new will arrive until the served bytes change again,
+    // so this is the one chance to ask it in.
+    if let Some(worker) = registration.waiting() {
+        if worker.state() == web_sys::ServiceWorkerState::Installed {
+            ask_worker_in(&worker);
+            return;
+        }
+    }
+
+    // A worker installing right now — this visit's own update check found
+    // one — or one that arrives later while the page stands.
+    let installing = match registration.installing() {
+        Some(worker) => Some(worker),
+        None => update_found(registration).await,
+    };
+    let Some(worker) = installing else {
+        return;
+    };
+    if wait_for_state_change(&worker).await.is_err() {
+        let note = JsValue::from_str("life_counter: could not wait for the worker to install.");
+        web_sys::console::warn_1(&note);
+        return;
+    }
+    if worker.state() == web_sys::ServiceWorkerState::Installed {
+        ask_worker_in(&worker);
+    }
+}
+
+/// Send the message the worker answers with `skipWaiting`.
+fn ask_worker_in(worker: &web_sys::ServiceWorker) {
+    worker.post_message(&JsValue::from_str("SKIP_WAITING")).ok();
+}
+
+/// Reload once when the worker in charge changes.
+///
+/// The guard is the in-flight flag: an ask sent twice would fire the event
+/// once, and a second registration's late update could fire it again under a
+/// page already reloading. One reload per swap, and never two in a row, is
+/// what keeps this from becoming the loop the naive version of this code is:
+/// a page that reloads unasked on `installed` never lets the waiting worker
+/// activate, because a reloading page still counts as a client.
+fn watch_for_controller_change(window: &web_sys::Window) {
+    thread_local! {
+        static WATCHING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+    if WATCHING.with(std::cell::Cell::get) {
+        return;
+    }
+    WATCHING.with(|watching| watching.set(true));
+
+    let container = window.navigator().service_worker();
+    let handler = Closure::<dyn FnMut(JsValue)>::new(move |_event: JsValue| {
+        if let Some(window) = web_sys::window() {
+            window.location().reload().ok();
+        }
+    });
+    let _ = container
+        .add_event_listener_with_callback("controllerchange", handler.as_ref().unchecked_ref());
+    // Never dropped: exactly one listener for the page's lifetime, and the
+    // guard above makes re-registering a no-op.
+    handler.forget();
+}
+
+/// The worker this registration announces through `updatefound`, if one
+/// arrives while the page stands.
+///
+/// The event carries the registration, not the worker; the worker is its
+/// `installing` one. `None` resolves the wait empty if the registration is
+/// ever torn down between the two states this cares about.
+async fn update_found(
+    registration: &web_sys::ServiceWorkerRegistration,
+) -> Option<web_sys::ServiceWorker> {
+    let event = JsFuture::from(js_sys::Promise::new(&mut |resolve, _reject| {
+        let resolved = Closure::<dyn FnMut(JsValue)>::new(move |value: JsValue| {
+            resolve.call1(&JsValue::NULL, &value).ok();
+        });
+        let _ = registration
+            .add_event_listener_with_callback("updatefound", resolved.as_ref().unchecked_ref());
+        // Never dropped: the promise settles at most once, and the
+        // registration outlives the page anyway.
+        resolved.forget();
+    }))
+    .await
+    .ok()?;
+    let event = event.dyn_into::<web_sys::Event>().ok()?;
+    let announced = event
+        .target()?
+        .dyn_into::<web_sys::ServiceWorkerRegistration>()
+        .ok()?;
+    announced.installing()
+}
+
+/// Resolve at the worker's next state change, whichever it is.
+async fn wait_for_state_change(worker: &web_sys::ServiceWorker) -> Result<(), JsValue> {
+    JsFuture::from(js_sys::Promise::new(&mut |resolve, _reject| {
+        let resolved = Closure::<dyn FnMut(JsValue)>::new(move |value: JsValue| {
+            resolve.call1(&JsValue::NULL, &value).ok();
+        });
+        let _ = worker
+            .add_event_listener_with_callback("statechange", resolved.as_ref().unchecked_ref());
+        // Never dropped, like the one above: at most one state change is
+        // waited for here, and the worker outlives the page.
+        resolved.forget();
+    }))
+    .await
+    .map(|_| ())
 }
 
 /// Hand this app's own URLs back to the current worker.
@@ -600,9 +757,8 @@ fn script_belongs_to_app(script: &str, ours: &str) -> bool {
 /// The page became visible again: the browser has released the screen wake lock
 /// whenever the page is hidden, so ask for a new one.
 fn on_visibility_change(state: &Shared) {
-    let visible = document()
-        .map(|document| document.visibility_state() == VisibilityState::Visible)
-        .unwrap_or(false);
+    let visible =
+        document().is_ok_and(|document| document.visibility_state() == VisibilityState::Visible);
     let in_game = state.borrow().game.is_some();
     if visible && in_game {
         acquire_wake_lock(state);
@@ -658,14 +814,14 @@ fn start() -> Result<(), JsValue> {
         let handle = state.clone();
         let screen = element("game-screen")?;
         listen(&screen, "pointerdown", move |event| {
-            on_press(&handle, event)
+            on_press(&handle, event);
         })?;
     }
     {
         let handle = state.clone();
         let screen = element("game-screen")?;
         listen(&screen, "pointerup", move |event| {
-            on_release(&handle, event)
+            on_release(&handle, event);
         })?;
     }
     {
@@ -676,7 +832,7 @@ fn start() -> Result<(), JsValue> {
         // as the pointer moves at all, which would abandon every press.
         let cancel = state.clone();
         listen(&screen, "pointercancel", move |event| {
-            on_cancel(&cancel, event)
+            on_cancel(&cancel, event);
         })?;
     }
 
@@ -686,7 +842,7 @@ fn start() -> Result<(), JsValue> {
             .body()
             .ok_or_else(|| JsValue::from_str("The page has no body"))?;
         listen(&body, "visibilitychange", move |_| {
-            on_visibility_change(&handle)
+            on_visibility_change(&handle);
         })?;
     }
 

@@ -83,6 +83,7 @@ pub struct PlayerLayout {
 /// by `player_count / 2` rows for four or more. Two players is the two-column
 /// case's degenerate sibling — one row — but the original drew it as two stacked
 /// panels, so it stays on the one-column rule.
+#[must_use]
 pub fn layout(player_count: u8) -> PlayerLayout {
     debug_assert!((MIN_PLAYERS..=MAX_PLAYERS).contains(&player_count));
     if player_count <= 3 {
@@ -109,6 +110,7 @@ pub fn layout(player_count: u8) -> PlayerLayout {
 /// A single player is never rotated — one person is sitting where they started
 /// it — and `index` is taken modulo the count so the rule answers for any
 /// index at all rather than trusting the caller.
+#[must_use]
 pub fn rotation_for(index: usize, player_count: u8) -> u16 {
     if player_count >= 2 && 2 * (index % player_count as usize) < player_count as usize {
         180
@@ -118,6 +120,7 @@ pub fn rotation_for(index: usize, player_count: u8) -> u16 {
 }
 
 /// The colour of player `index`, cycling through [`COLORS`].
+#[must_use]
 pub fn color_for(index: usize) -> &'static str {
     COLORS[index % COLORS.len()]
 }
@@ -128,11 +131,15 @@ pub fn color_for(index: usize) -> &'static str {
 /// [`PLAYER_COUNT_OPTIONS`], so anything else can only come from a tampered
 /// DOM; clamping keeps one bad value from taking the whole board down, and
 /// every count in range is a legitimate one, so there is nothing to reject.
+#[must_use]
 pub fn parse_player_count(raw: &str) -> u8 {
-    raw.trim()
-        .parse::<i64>()
-        .unwrap_or(MIN_PLAYERS as i64)
-        .clamp(MIN_PLAYERS as i64, MAX_PLAYERS as i64) as u8
+    // The constants are small; the clamp output provably fits a `u8`, and the
+    // try_into makes that true by construction rather than by inspection.
+    i64::from(MIN_PLAYERS)
+        .max(raw.trim().parse::<i64>().unwrap_or(i64::from(MIN_PLAYERS)))
+        .min(i64::from(MAX_PLAYERS))
+        .try_into()
+        .unwrap_or(MIN_PLAYERS)
 }
 
 /// Read the starting life out of the setup form.
@@ -140,6 +147,7 @@ pub fn parse_player_count(raw: &str) -> u8 {
 /// Anything unparseable or out of range falls back to the default the original
 /// pre-filled the field with, so an empty or absurd number still starts a game
 /// rather than refusing to.
+#[must_use]
 pub fn parse_starting_life(raw: &str) -> i64 {
     let default = 20;
     let value = raw.trim().parse::<i64>().unwrap_or(default);
@@ -150,6 +158,7 @@ pub fn parse_starting_life(raw: &str) -> i64 {
 ///
 /// The original built this by string concatenation, and the commit "fix 0 total
 /// change bug" is why a total that lands back on zero reads `0` and not `+0`.
+#[must_use]
 pub fn snackbar_label(total: i64) -> String {
     if total > 0 {
         format!("+{total}")
@@ -334,6 +343,7 @@ impl GameState {
     /// A count of zero would build a grid with no rows and a division by zero
     /// in [`layout`], so it is raised to one player: the smallest game there
     /// is, rather than no game at all.
+    #[must_use]
     pub fn new(player_count: u8, starting_life: i64) -> Self {
         let player_count = player_count.clamp(MIN_PLAYERS, MAX_PLAYERS);
         Self {
@@ -346,6 +356,7 @@ impl GameState {
     }
 
     /// A board built from the setup form's raw field values.
+    #[must_use]
     pub fn from_form(player_count: &str, starting_life: &str) -> Self {
         Self::new(
             parse_player_count(player_count),
@@ -354,31 +365,37 @@ impl GameState {
     }
 
     /// The number of players.
+    #[must_use]
     pub fn player_count(&self) -> u8 {
         self.player_count
     }
 
     /// The life everyone started on.
+    #[must_use]
     pub fn starting_life(&self) -> i64 {
         self.starting_life
     }
 
     /// The grid this board is laid out on.
+    #[must_use]
     pub fn layout(&self) -> PlayerLayout {
         layout(self.player_count)
     }
 
     /// Whether player `index` is drawn upside down.
+    #[must_use]
     pub fn rotation(&self, index: usize) -> u16 {
         rotation_for(index, self.player_count)
     }
 
     /// Player `index`'s panel colour.
+    #[must_use]
     pub fn color(&self, index: usize) -> &'static str {
         color_for(index)
     }
 
     /// Everything the UI needs to draw one player.
+    #[must_use]
     pub fn snapshot(&self, index: usize) -> Option<PlayerSnapshot> {
         self.players.get(index).map(|player| PlayerSnapshot {
             index,
@@ -392,6 +409,12 @@ impl GameState {
     }
 
     /// Every player, in grid order.
+    ///
+    /// # Panics
+    ///
+    /// Never in practice: the range is the players themselves, so every index
+    /// is in range by construction. The `expect` names the invariant.
+    #[must_use]
     pub fn snapshots(&self) -> Vec<PlayerSnapshot> {
         (0..self.players.len())
             .map(|index| self.snapshot(index).expect("index is in range"))

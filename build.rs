@@ -138,6 +138,10 @@ fn rasterize(root: &Path, size: u32) -> Vec<u8> {
         .unwrap_or_else(|| panic!("a {size}x{size} canvas is not representable"));
     // f32, not f64: `Transform::from_scale` is f32, and `resvg` 0.48 has no f64
     // overload to fall back on.
+    // `size` is one of a fixed pair of icon sizes and the width the SVG
+    // itself declares; both are far below the 24-bit f32 mantissa, so the
+    // casts are exact and the lint's worry cannot arise.
+    #[allow(clippy::cast_precision_loss)]
     let scale = size as f32 / tree.size().width() as f32;
     resvg::render(
         &tree,
