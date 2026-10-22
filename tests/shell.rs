@@ -450,9 +450,11 @@ fn the_manifest_constants_are_the_original_apps() {
         build.contains("\"Life Counter\""),
         "the manifest keeps the original's name"
     );
+    // One name, both fields. The original had no short_name, and the one that
+    // was supplied — "Life" — named something else.
     assert!(
-        build.contains("\"Life\""),
-        "the original had no short_name, so one is supplied"
+        build.contains("(\"Life Counter\", \"Life Counter\","),
+        "short_name must be the app's own name, not a shorter name for another thing"
     );
     assert!(
         build.contains("\"standalone\""),
