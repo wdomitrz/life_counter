@@ -751,7 +751,7 @@ fn the_icon_is_the_original_and_stays_the_source_of_truth() {
         text.contains("Material+Symbols+Outlined:heart_check"),
         "the icon is the Material Symbols heart_check glyph"
     );
-    assert!(text.contains("#606060"), "the icon keeps its fill colour");
+    assert!(text.contains("#444444"), "the icon keeps its fill colour");
     assert_eq!(
         text.matches("transform=").count(),
         1,
