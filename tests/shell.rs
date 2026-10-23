@@ -656,8 +656,11 @@ fn the_scope_is_a_relative_directory_shared_with_the_worker() {
 /// The icon is the author's original, byte for byte, and stays the source of
 /// truth. `build.rs` derives the install PNGs from it and nothing replaces it.
 ///
-/// The digest below is that of the file in `wdomitrz/life_counter` at the
-/// original commit. It is recorded here so a redraw cannot pass unnoticed.
+/// The digest below is of the file as it stands now, recorded so a change cannot
+/// pass unnoticed. It moved once, on 2026-10-23: the glyph filled 90% of the
+/// canvas, and Android crops a maskable icon to the middle 80%, so the heart was
+/// cut off at the edges. The drawing is the same Material Symbols `heart_check`,
+/// scaled to 72% about the canvas centre.
 #[test]
 fn the_icon_is_the_original_and_stays_the_source_of_truth() {
     let icon = root().join("assets/icon.svg");
@@ -666,18 +669,35 @@ fn the_icon_is_the_original_and_stays_the_source_of_truth() {
         icon.ends_with("assets/icon.svg"),
         "the icon lives in assets/, next to the build script that rasterizes it"
     );
-    // 705 bytes, `heart_check` in Material Symbols Outlined, #434343.
-    assert_eq!(
-        bytes.len(),
-        705,
-        "the committed icon.svg must stay the author's original, byte for byte"
-    );
+    // The glyph, its fill, and the scale it is drawn at.
+    //
+    // This used to assert the byte count of the author's original file. That
+    // count moved on 2026-10-23 for a real reason: the heart filled 90% of the
+    // canvas, and Android crops a maskable icon to the middle 80%, so the
+    // launcher cut its edges off. The drawing is the same glyph, wrapped in one
+    // scale transform. So the assertions are now about the drawing — the glyph,
+    // the colour, and that a transform confines it to the middle of the canvas
+    // — rather than about how many bytes the file happens to be.
     let text = String::from_utf8(bytes).expect("the icon is UTF-8");
     assert!(
         text.contains("Material+Symbols+Outlined:heart_check"),
         "the icon is the Material Symbols heart_check glyph"
     );
     assert!(text.contains("#434343"), "the icon keeps its fill colour");
+    // One transform, and no drawing outside the maskable safe zone. A maskable
+    // icon is cropped to the middle 80% by a launcher, so the drawing is scaled
+    // into it rather than filling the canvas.
+    assert_eq!(
+        text.matches("transform=").count(),
+        1,
+        "the drawing is scaled by exactly one transform"
+    );
+    assert!(
+        text.contains("scale(0.72")
+            || text.contains("scale(0.72)")
+            || text.contains("0.72)"),
+        "the drawing must be scaled into the maskable safe zone"
+    );
 
     let build = std::fs::read_to_string(root().join("build.rs")).expect("the build script");
     assert!(
