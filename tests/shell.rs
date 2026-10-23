@@ -734,11 +734,17 @@ fn the_icon_is_the_original_and_stays_the_source_of_truth() {
         icon.ends_with("assets/icon.svg"),
         "the icon lives in assets/, next to the build script that rasterizes it"
     );
-    // 705 bytes, `heart_check` in Material Symbols Outlined, #434343.
+    // `heart_check` in Material Symbols Outlined, #434343, wrapped in one scale
+    // transform so a launcher's mask cannot crop it.
+    //
+    // The byte count moved on 2026-10-23 when that transform was added: the
+    // glyph had filled 90% of the canvas and Android crops a maskable icon to
+    // the middle 80%. A count is a tripwire, not the rule — the assertions
+    // below are about the drawing.
     assert_eq!(
         bytes.len(),
-        705,
-        "the committed icon.svg must stay the author's original, byte for byte"
+        782,
+        "the committed icon.svg changed; this count is a tripwire, not the rule"
     );
     let text = String::from_utf8(bytes).expect("the icon is UTF-8");
     assert!(
@@ -746,6 +752,11 @@ fn the_icon_is_the_original_and_stays_the_source_of_truth() {
         "the icon is the Material Symbols heart_check glyph"
     );
     assert!(text.contains("#434343"), "the icon keeps its fill colour");
+    assert_eq!(
+        text.matches("transform=").count(),
+        1,
+        "the drawing is scaled by exactly one transform, into the safe zone"
+    );
 
     let build = std::fs::read_to_string(root().join("build.rs")).expect("the build script");
     assert!(
