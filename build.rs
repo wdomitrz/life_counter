@@ -47,12 +47,14 @@ const ICON_SIZES: [(&str, u32); 2] = [("icon-192.png", 192), ("icon-512.png", 51
 ///
 /// The original declared `"name": "Life Counter"`, `"start_url": "."`,
 /// `"display": "standalone"` and a single `any`-size SVG icon, and no
-/// `short_name` (it was removed deliberately, in "remove short name"), so
-/// `short_name` is invented here as "Life". It also declared neither a theme
+/// `short_name` (it was removed deliberately, in "remove short name"). It is
+/// the app's own name: the one invented here was "Life", which is not what the
+/// app is — it counts lives in a game, and "Life" under an icon says nothing
+/// about that, or reads as something else entirely. It also declared neither a theme
 /// nor a background colour, so both are taken from the original page: the
 /// `bg-gray-800` body of the JavaScript version, resolved to a hex value in
 /// `src/ui.html`.
-const MANIFEST: (&str, &str, &str, &str) = ("Life Counter", "Life", "#1f2937", "#111827");
+const MANIFEST: (&str, &str, &str, &str) = ("Life Counter", "Life Counter", "#1f2937", "#111827");
 
 fn main() {
     let root = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap());

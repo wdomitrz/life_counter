@@ -218,7 +218,12 @@ jobs:
           for key in ("start_url", "scope"):
               assert m[key] == "./", f"{key} must be relative, got {m[key]!r}"
           assert "id" not in m, "an id of \"./\" resolves to the bare origin and collides with every sibling app"
-          assert m["name"] == "Life Counter" and m["short_name"] == "Life", "the name must be preserved"
+          # One name, both fields: the launcher label is the app's name. The
+          # short name was invented as "Life", which is not what this app is.
+          assert m["name"] == "Life Counter", "the name must be preserved"
+          assert (
+              m["short_name"] == m["name"]
+          ), "the launcher label must be the app's name, not a shorter name for another thing"
           assert m["display"] == "standalone", "display is the original standalone"
           assert m["theme_color"] == "#111827", "the theme colour must be the dark one"
           assert m["background_color"] == "#1f2937", "the background colour must be the dark one"
@@ -240,8 +245,11 @@ jobs:
           with open("dist/icon.svg", "rb") as handle:
               published = handle.read()
           assert published == source, "dist/icon.svg is not the committed icon"
+          # The pin moved on 2026-10-23: the glyph filled 90% of the canvas and
+          # a launcher's mask cut the heart's edges off. The drawing is the same,
+          # wrapped in one scale transform at 72%, inside the maskable safe zone.
           assert hashlib.sha256(source).hexdigest() == (
-              "8dbcd9e1dbd6263026cf3d6eccb59df2efdf9e22f02b0c94d610c4de6ec168df"
+              "e84776c8e4dbcb4a07ab1c5001022c9e583de42a57e9cf204c29681db5727b07"
           ), "assets/icon.svg is no longer the author original"
           print("  ok   dist/icon.svg is the committed icon, byte for byte")
           PY
