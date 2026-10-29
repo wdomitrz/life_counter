@@ -108,8 +108,12 @@ fn now_ms() -> i64 {
 
 /// Attach a listener that is never removed, because there are a fixed number of
 /// them and they all live as long as the page does.
+///
+/// Takes the `EventTarget` rather than an `Element` because the events that
+/// matter are not all element events: `visibilitychange` is fired at the
+/// document and reaches nothing below it.
 fn listen(
-    target: &Element,
+    target: &EventTarget,
     event: &str,
     handler: impl FnMut(&Event) + 'static,
 ) -> Result<(), JsValue> {
@@ -326,6 +330,20 @@ fn build_player_options(select: &HtmlSelectElement) -> Result<(), JsValue> {
     Ok(())
 }
 
+/// The sentinel the app is holding, if it is holding a live one.
+///
+/// A handle is not the same thing as a held lock: the browser drops the lock
+/// whenever the page is hidden and on some platform decisions, and the handle it
+/// left behind reports `released()`. Asking for a new lock on the strength of a
+/// stale handle would fail, so every reader goes through here.
+fn live_wake_lock(state: &Shared) -> Option<WakeLockSentinel> {
+    let app = state.borrow();
+    app.wake_lock
+        .as_ref()
+        .filter(|sentinel| !sentinel.released())
+        .cloned()
+}
+
 /// Ask the browser to keep the screen awake, and remember the sentinel.
 ///
 /// A refusal is expected on some browsers, over plain HTTP, and in a background
@@ -333,15 +351,34 @@ fn build_player_options(select: &HtmlSelectElement) -> Result<(), JsValue> {
 /// swallowed the failure too. Log it and carry on — a life counter that cannot
 /// keep the screen on is still a life counter.
 fn acquire_wake_lock(state: &Shared) {
-    let Some(navigator) = web_sys::window().map(|window| window.navigator()) else {
+    // Already holding a live lock: requesting another would obtain a second
+    // sentinel and lose the first, and the lost one is never released, so the
+    // screen stays on after the game does. `visibilitychange` fires more often
+    // than the lock is actually lost, so this is the common path.
+    if live_wake_lock(state).is_some() {
+        return;
+    }
+    let Some(window) = web_sys::window() else {
         return;
     };
+    let navigator = window.navigator();
+    // A browser without the API has no `wakeLock` property at all, and
+    // `request` on it throws — which in wasm is a panic taking the handler with
+    // it. Refuse quietly instead, the way every other refusal is handled.
+    let available =
+        js_sys::Reflect::has(navigator.as_ref(), &JsValue::from_str("wakeLock")).unwrap_or(false);
+    if !available {
+        web_sys::console::warn_1(&JsValue::from_str(
+            "screen wake lock is not available in this browser",
+        ));
+        return;
+    }
     let promise = navigator.wake_lock().request(WakeLockType::Screen);
     let handle = state.clone();
     spawn_local(async move {
         let sentinel = wasm_bindgen_futures::JsFuture::from(promise).await;
         match sentinel.map(wasm_bindgen::JsCast::dyn_into::<WakeLockSentinel>) {
-            Ok(Ok(sentinel)) => handle.borrow_mut().wake_lock = Some(sentinel),
+            Ok(Ok(sentinel)) => adopt_wake_lock(&handle, sentinel),
             other => {
                 web_sys::console::warn_1(&JsValue::from_str("screen wake lock unavailable"));
                 if let Err(error) = other {
@@ -350,6 +387,51 @@ fn acquire_wake_lock(state: &Shared) {
             }
         }
     });
+}
+
+/// Take up a granted sentinel, or drop it if the round ended while it was being
+/// asked for.
+///
+/// The request resolves long after the tap that made it, so the game it was made
+/// for may already be over. Storing the sentinel then would keep the screen on
+/// over the setup screen with nothing left to release it.
+fn adopt_wake_lock(state: &Shared, sentinel: WakeLockSentinel) {
+    if state.borrow().game.is_none() {
+        let _ = sentinel.release();
+        return;
+    }
+    state.borrow_mut().wake_lock = Some(sentinel.clone());
+
+    // The browser can release the lock with no page event to say so — it does
+    // that by itself when it decides to, and its `release` event is the only
+    // notice. Forget the handle then, so the slot is empty rather than holding a
+    // sentinel for a lock that no longer exists: that is what makes the next
+    // request a real one instead of a no-op.
+    //
+    // The released sentinel is compared by identity, because this fires later
+    // and by then the slot may hold a newer lock, which must not be forgotten.
+    let watched = sentinel.clone();
+    let weak = Rc::downgrade(state);
+    let on_release = Closure::<dyn FnMut()>::new(move || {
+        // Detach this handler from the sentinel it watches: the closure holds the
+        // sentinel and the sentinel holds the closure, and this is the one place
+        // that cycle can be broken.
+        watched.set_onrelease(None);
+        let Some(state) = weak.upgrade() else {
+            return;
+        };
+        let stale = {
+            let app = state.borrow();
+            app.wake_lock
+                .as_ref()
+                .is_some_and(|held| js_sys::Object::is(held.as_ref(), watched.as_ref()))
+        };
+        if stale {
+            state.borrow_mut().wake_lock = None;
+        }
+    });
+    sentinel.set_onrelease(Some(on_release.as_ref().unchecked_ref()));
+    on_release.forget();
 }
 
 /// Release the wake lock, if one is held.
@@ -361,6 +443,9 @@ fn acquire_wake_lock(state: &Shared) {
 fn release_wake_lock(state: &Shared) {
     let sentinel = state.borrow_mut().wake_lock.take();
     if let Some(sentinel) = sentinel {
+        // Ours to release deliberately, so the release handler is not wanted:
+        // it exists to notice the browser dropping the lock on its own.
+        sentinel.set_onrelease(None);
         let _ = sentinel.release();
     }
 }
@@ -754,13 +839,37 @@ fn script_belongs_to_app(script: &str, ours: &str) -> bool {
     }
 }
 
-/// The page became visible again: the browser has released the screen wake lock
-/// whenever the page is hidden, so ask for a new one.
+/// Re-request the screen wake lock whenever the page becomes visible again.
+///
+/// The browser releases the lock every time the page is hidden, so it has to be
+/// taken again on the way back — and a phone put down mid-game is exactly when
+/// the screen must not time out.
+///
+/// The listener goes on the **document**, not on the body. `visibilitychange` is
+/// fired at the document and does not bubble, so a listener on the body is never
+/// called: the lock was taken once when the game started and never again, and the
+/// screen went to sleep on the first return from a background tab.
+fn watch_visibility(state: &Shared) -> Result<(), JsValue> {
+    let target = document()?;
+    let handle = state.clone();
+    listen(&target, "visibilitychange", move |_| {
+        on_visibility_change(&handle);
+    })
+}
+
+/// The page became visible again, or went away.
 fn on_visibility_change(state: &Shared) {
     let visible =
         document().is_ok_and(|document| document.visibility_state() == VisibilityState::Visible);
+    if !visible {
+        // The browser has released the lock as the page left; forget the
+        // handle, so coming back takes a fresh lock rather than trusting one
+        // that is gone and leaving the new screen to time out.
+        state.borrow_mut().wake_lock = None;
+        return;
+    }
     let in_game = state.borrow().game.is_some();
-    if visible && in_game {
+    if in_game {
         acquire_wake_lock(state);
     }
 }
@@ -836,15 +945,7 @@ fn start() -> Result<(), JsValue> {
         })?;
     }
 
-    {
-        let handle = state.clone();
-        let body = document()?
-            .body()
-            .ok_or_else(|| JsValue::from_str("The page has no body"))?;
-        listen(&body, "visibilitychange", move |_| {
-            on_visibility_change(&handle);
-        })?;
-    }
+    watch_visibility(&state)?;
 
     register_service_worker();
 
