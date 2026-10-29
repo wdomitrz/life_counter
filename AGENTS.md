@@ -110,7 +110,13 @@ fetch handler passes it to the network unconditionally.
 - **Round reset** is a fixed button in the bottom-right corner.
 - **Screen Wake Lock** is requested when a game starts and re-requested on
   `visibilitychange`, because the browser releases it whenever the page is
-  hidden.
+  hidden. The listener is on the **document**, not the body: the event is fired
+  at the document and does not bubble, so a listener below it is never called
+  and the lock is taken once for the whole game. The sentinel is a *handle*, not
+  a held lock — it is forgotten when the page hides and when its own `release`
+  event fires (the browser can drop the lock with no page event at all), and a
+  request that resolves after the round has ended is released rather than
+  stored, which would hold the screen on over the setup screen forever.
 
 ## Tests
 

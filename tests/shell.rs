@@ -822,6 +822,172 @@ fn strip_yaml_comments(source: &str) -> String {
         .join("\n")
 }
 
+/// A Rust source with its comments removed.
+///
+/// Same reasoning as [`strip_yaml_comments`], one language over: these files
+/// explain their decisions in prose, so the doc comment beside a call names it.
+/// An assertion reading raw text is satisfied by a comment describing the call
+/// that has since been deleted — and the wake-lock code in `src/ui.rs` is the
+/// worst case, because explaining the event's propagation is exactly what the
+/// comments do.
+///
+/// String literals are copied through untouched, and skipped over so that a
+/// `//` or `/*` inside one is not mistaken for a comment: the event names these
+/// tests assert on *are* literals.
+fn strip_rust_comments(source: &str) -> String {
+    let chars: Vec<char> = source.chars().collect();
+    let mut out = String::with_capacity(source.len());
+    let mut index = 0;
+    while index < chars.len() {
+        let character = chars[index];
+        let next = chars.get(index + 1).copied();
+        if character == '/' && next == Some('/') {
+            while index < chars.len() && chars[index] != '\n' {
+                index += 1;
+            }
+        } else if character == '/' && next == Some('*') {
+            index += 2;
+            while index < chars.len()
+                && !(chars[index] == '*' && chars.get(index + 1) == Some(&'/'))
+            {
+                index += 1;
+            }
+            index = (index + 2).min(chars.len());
+            out.push(' ');
+        } else if character == '"' {
+            out.push('"');
+            index += 1;
+            while index < chars.len() {
+                let literal = chars[index];
+                out.push(literal);
+                index += 1;
+                if literal == '\\' {
+                    if let Some(escaped) = chars.get(index) {
+                        out.push(*escaped);
+                        index += 1;
+                    }
+                } else if literal == '"' {
+                    break;
+                }
+            }
+        } else {
+            out.push(character);
+            index += 1;
+        }
+    }
+    out
+}
+
+/// The body of the function whose declaration contains `signature`, braces and
+/// all.
+///
+/// Assertions about *where* something is called need the body, not the file: a
+/// listener on the document and a listener on the body are one word apart in a
+/// whole-file search, which is how the bug this covers survived review.
+fn function_body(source: &str, signature: &str) -> String {
+    let start = source
+        .find(signature)
+        .unwrap_or_else(|| panic!("{signature:?} is missing from the source"));
+    let rest = &source[start..];
+    let open = rest
+        .find('{')
+        .unwrap_or_else(|| panic!("{signature:?} has no body"));
+    let mut depth = 0_usize;
+    for (offset, character) in rest[open..].char_indices() {
+        match character {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return rest[open..=open + offset].to_string();
+                }
+            }
+            _ => {}
+        }
+    }
+    panic!("{signature:?} has an unbalanced body")
+}
+
+/// The screen must stay on for the whole game, not just its first minute.
+///
+/// `visibilitychange` is fired at the **document** and does not bubble. A
+/// listener attached to the body never runs, so the lock was taken once when the
+/// game started and never re-taken — and since the browser drops the lock every
+/// time the page is hidden, the screen went to sleep on the first return from a
+/// background tab. That is the bug this test is named after, and the body is
+/// asserted *absent* because that is the shape it came back in.
+#[test]
+fn the_wake_lock_is_re_requested_when_the_page_comes_back() {
+    let path = root().join("src/ui.rs");
+    let ui = strip_rust_comments(&std::fs::read_to_string(&path).expect("reading src/ui.rs"));
+
+    let watch = function_body(&ui, "fn watch_visibility");
+    assert!(
+        watch.contains("\"visibilitychange\""),
+        "the listener must be for `visibilitychange`"
+    );
+    assert!(
+        watch.contains("document()"),
+        "`visibilitychange` does not bubble, so the listener has to be on the \
+         document itself; anything below it is never called and the lock is \
+         never taken again"
+    );
+    assert!(
+        !watch.contains("body"),
+        "a listener on the body is the original bug: the event never reaches it"
+    );
+    assert!(
+        !ui.contains(".body()"),
+        "nothing in the page listens on the body any more; the one listener that \
+         did was the broken wake-lock one"
+    );
+    assert!(
+        ui.matches("watch_visibility(").count() >= 2,
+        "`watch_visibility` must be installed by the startup code, not merely \
+         defined"
+    );
+}
+
+/// A lock handle is not a held lock, and the app must not confuse the two.
+///
+/// The browser drops the lock whenever the page is hidden and on platform
+/// decisions of its own, saying so only through the sentinel's `release` event.
+/// Keeping the handle would make the app believe it still holds the lock, so the
+/// next `visibilitychange` would ask for nothing and the screen would time out
+/// exactly as reported. The two directions are asserted separately: a hidden page
+/// forgets the handle, and a sentinel that reports itself released is not trusted.
+#[test]
+fn the_wake_lock_is_forgotten_whenever_the_browser_drops_it() {
+    let path = root().join("src/ui.rs");
+    let ui = strip_rust_comments(&std::fs::read_to_string(&path).expect("reading src/ui.rs"));
+
+    let returned = function_body(&ui, "fn on_visibility_change");
+    assert!(
+        returned.contains("wake_lock = None"),
+        "going hidden means the browser has released the lock: the handle has to \
+         be dropped, or coming back trusts a lock that is gone"
+    );
+    assert!(
+        ui.contains(".released()"),
+        "a sentinel the browser released still exists and reports it; a held lock \
+         is one that has not been released, and that is what requests must check"
+    );
+    assert!(
+        ui.contains("set_onrelease"),
+        "a lock released while the page is visible is only reported by the \
+         sentinel's own `release` event"
+    );
+
+    // The request resolves after the tap that made it, so the round can already
+    // be over. Keeping the sentinel then holds the screen on over the setup
+    // screen forever: the opposite complaint, from the same bug.
+    let adopted = function_body(&ui, "fn adopt_wake_lock");
+    assert!(
+        adopted.contains("game.is_none()") && adopted.contains("release()"),
+        "a granted lock whose game has ended must be released, not stored"
+    );
+}
+
 /// The Pages deployment cannot drift from the crate it publishes.
 ///
 /// The deploy job installs its own `wasm-bindgen`, pinned to a literal in the
