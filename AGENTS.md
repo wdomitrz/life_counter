@@ -40,9 +40,12 @@ leaving a half-built site.
 There is **no run step and no server**: the build is the whole story. To look at
 it, serve the directory (`python3 -m http.server`) and open it.
 
-`wasm-bindgen` is pinned to `=0.2.128` in `Cargo.toml` and must match the CLI
-exactly; a mismatched generator produces bindings the runtime will not load,
-and the page then fails to start with "Life Counter could not start".
+`Cargo.toml` asks for `wasm-bindgen = "0.2"` and `Cargo.lock` records the one
+version that means, because `wasm-bindgen-futures`, `js-sys` and `web-sys` each
+depend on an exact `wasm-bindgen`. The CLI must be that version; a mismatched
+generator produces bindings the runtime will not load, and the page then fails
+to start with "Life Counter could not start". Both workflows read the version
+from `Cargo.lock` instead of naming it, so there is nothing to keep in step.
 
 **`dist/` is where a stale service worker bites.** The app registers one, and
 `caches.addAll` fails if any listed URL 404s — so a missing file in `dist/`

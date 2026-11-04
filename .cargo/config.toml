@@ -1,4 +1,4 @@
-# web-sys 0.3.105 puts the whole Screen Wake Lock API behind this cfg, not
+# web-sys 0.3 puts the whole Screen Wake Lock API behind this cfg, not
 # just behind its `WakeLock*` cargo features: `Navigator::wake_lock`,
 # `WakeLock::request` and `WakeLockSentinel::release` each carry
 # `#[cfg(web_sys_unstable_apis)]` *before* their `#[cfg(feature = ...)]`, and
